@@ -1,0 +1,1 @@
+# In SAM environment variables are declared in template.yaml
