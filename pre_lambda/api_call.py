@@ -4,13 +4,11 @@ from botocore.exceptions import ClientError
 import requests
 from dotenv import load_dotenv
 
-import os
 import json
+import re
 from datetime import datetime, timedelta
 
-
 # API key for GNews
-
 def get_gnews_api_key():
 
     secret_name = "Gnews-api-key"
@@ -35,7 +33,7 @@ def get_gnews_api_key():
     secret = json.loads(get_secret_value_response['SecretString'])
     return secret['GNEWS_API_KEY']
 
-def store_article(folder_name, article, s3_client):
+def store_article(folder_name, article, topic, s3_client):
 
     bucket_name = "econolens-staging-area"
 
@@ -46,10 +44,11 @@ def store_article(folder_name, article, s3_client):
         'title': article['title'],
         'description': article['description'],
         'publishedAt': article['publishedAt'],
+        'topic': topic,
         'content': article['content']
     }
     json_data = json.dumps(data, indent=4)
-    print(f'Processing article {article_title} on {object_key}')
+    print(f'Processing: {article_title} on {folder_name}')
 
     try:
         s3_client.put_object(
@@ -58,15 +57,26 @@ def store_article(folder_name, article, s3_client):
             Body=json_data,
             ContentType="application/json"
         )
-        print(f"✅ Successfully uploaded {object_key} to {bucket_name}")
+        print(f"Successfully uploaded: {object_key} to {bucket_name}")
     except Exception as e:
-        print(f"❌ Upload failed: {e}")
+        print(f"Upload failed: {e}")
 
-
-def process_topic(start_date_str:str, topic_keywords_str:str, apikey:str):
+def process_topic(start_date_str:str, topic_str:str, apikey:str):
     """
     date_prefix is in the format yyyy-mm-dd
     """
+
+    keywords = {
+        'economy_general': '(Tax) OR (Tariff)',
+        'economy_long_term': '((American OR US) AND Economy) OR (National output) OR (National income)',
+        'labor_market': '(Labor market) OR (jobless) OR (unemployment)',
+        'inflation': '(Inflation)',
+        'consumer_behavior': '(Retail sales) OR (consumer spending) OR (disposable income) OR (household spending)',
+        'government_and_policy': '(Federal Reserve) OR (Fed policy) OR (Interest rate) OR (rate cuts) OR (Treasury)',
+        'corporate': '(merger) OR (acquisition) OR (corporate earning)'
+    }
+    topic_keywords = keywords[topic_str]
+
     url = f"https://gnews.io/api/v4/search?q=example&apikey={apikey}"
 
     # Parse start date and compute end date (next day)
@@ -77,25 +87,28 @@ def process_topic(start_date_str:str, topic_keywords_str:str, apikey:str):
     from_time = start_date.strftime("%Y-%m-%dT00:00:00.000Z")
     to_time = end_date.strftime("%Y-%m-%dT00:00:00.000Z")
 
-    folder_name = f'{start_date_str}/{topic_keywords_str}'
+    folder_name = f'{start_date_str}/{topic_str}'
 
     # 10 articles per topic
     params = {
         'q': topic_keywords,
         'lang': 'en',
         'country': 'us',
-        'in': 'title,description,content',
+        'in': 'title,description', # do not search content for keywords as it hampers search query results
         'nullable': 'image',
         'max': '10',
         'from': from_time,
         'to': to_time,
         'sortby': 'relevance',
-        'expand': 'content'
+        'expand': 'content' # content, or None
     }
-
+    print(f'------------ Start topic {topic_str} on {start_date_str} ------------')
     response = requests.get(url, params=params)
+    # for debugging
+    print(json.dumps(response.json(), indent=4))
 
     if response.status_code == 200:
+        
         response = response.json()
         # check if response is empty
         if response:
@@ -103,28 +116,29 @@ def process_topic(start_date_str:str, topic_keywords_str:str, apikey:str):
 
             s3_client = boto3.client("s3")
             for a in articles:
-                store_article(folder_name, a, s3_client)
+                store_article(folder_name, a, topic_str, s3_client)
 
     else:
         print(f"Error: {response.status_code}")
 
+    print(f'------------ End topic {topic_str} on {start_date_str} ------------ \n')
 
-
-
+def process_date(start_date_str:str):
+    """
     
-search_keywords = {
-        'economy_general': '((Economy) OR (Economic growth) OR (economic slowdown) OR (Recession) OR (Economic downturn)) AND (USA OR America)',
-        'economy_long-term': '((Economy) OR (National output) OR (National income)) AND (USA OR America)',
-        'labor_market': '((Economy) OR (Labor market) OR (jobless) OR (unemployment)) AND (USA OR America)',
-        'inflation': '(Inflation) AND (USA OR America)',
-        'consumer behavior': '((Economy) OR (Retail sales) OR (consumer spending)) AND (USA OR America)',
-        'government and policy': '((Federal Reserve) OR (Fed policy) OR (Interest rate) OR (rate cuts) OR (Treasury)) AND (USA OR America)',
-        'corporate': '((merger) OR (acquisition) OR (corporate earning)) AND (USA OR America)'
-    }
+    """
+    pattern = r"^\d{4}-\d{2}-\d{2}$"
+    assert (re.match(pattern, start_date_str))
 
+    api_key = get_gnews_api_key()
+    topics = ['economy_general', 'economy_long_term', 'labor_market', 'inflation', 'consumer_behavior', 'government_and_policy', 'corporate']
 
-api_key = get_gnews_api_key()
+    for topic in topics:
+        process_topic(start_date_str, topic, api_key)
 
-topic_keywords = search_keywords['economy_general']
-
-process_topic('2025-09-01', topic_keywords, api_key)
+# process_date('2025-08-04')
+# process_date('2025-08-05')
+# process_date('2025-08-06')
+# process_date('2025-08-07')
+# process_date('2025-08-08')
+process_date('2025-09-01')
