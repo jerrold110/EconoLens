@@ -1,7 +1,11 @@
 """
 In SAM environment variables are declared in template.yaml
 
-Using client-side interation as there only around 50 objects at each run
+Using S3 client-side interation as there only around 50 objects at each run
+
+Keywords prioritise relevent information over volume. It is better to have no data than irrelevant data.
+
+Metadata includes title of article for tracing RAG sources
 """
 
 import boto3
@@ -9,9 +13,14 @@ from botocore.exceptions import ClientError
 from transformers import AutoTokenizer
 
 from dotenv import load_dotenv
-import json
 
-def copy_json_content_and_metadata(source_bucket, dest_bucket, date_prefix):
+import json
+from datetime import datetime
+import os
+from os.path import join, dirname
+from dotenv import load_dotenv
+
+def copy_json_files_from_s3(date_prefix):
     """
     Copies JSON files from `source_bucket` whose keys start with `date_prefix`
     to `dest_bucket`, extracting content and metadata separately.
@@ -41,7 +50,7 @@ def copy_json_content_and_metadata(source_bucket, dest_bucket, date_prefix):
 
             try:
                 # Download the JSON object
-                print(f"Processing: {key}")
+                print(f"🔹 Processing: {key}")
                 response = s3.get_object(Bucket=source_bucket, Key=key)
                 data = json.loads(response["Body"].read().decode("utf-8"))
 
@@ -49,6 +58,9 @@ def copy_json_content_and_metadata(source_bucket, dest_bucket, date_prefix):
                 content = data.get("content")
                 published_at = data.get("publishedAt")
                 topic = data.get("topic")
+                title = data.get("title")
+                dt = datetime.fromisoformat(published_at.replace("Z", "+00:00"))
+                unix_time = int(dt.timestamp())
 
                 # Build destination path components
                 # Example:
@@ -56,7 +68,7 @@ def copy_json_content_and_metadata(source_bucket, dest_bucket, date_prefix):
                 # → 2025-10-11/original/economy_general/filename.txt
                 parts = key.split("/", 1)
                 if len(parts) < 2:
-                    print(f"!!! Skipping {key}: unexpected key format.")
+                    print(f"⚠️ Skipping {key}: unexpected key format.")
                     continue
 
                 date_prefix_dir = parts[0]              # e.g., "2025-10-11"
@@ -77,9 +89,13 @@ def copy_json_content_and_metadata(source_bucket, dest_bucket, date_prefix):
                 )
 
                 # Build and upload metadata JSON
+                end_index = published_at.index('T')
                 metadata_obj = {
                     "publishedAt": published_at,
-                    "topic": topic
+                    "unix_time": unix_time,
+                    "topic": topic,
+                    "title": title,
+                    "summary": 'no'
                 }
 
                 s3.put_object(
@@ -89,36 +105,21 @@ def copy_json_content_and_metadata(source_bucket, dest_bucket, date_prefix):
                     ContentType="application/json"
                 )
 
-                print(f"Processed {key}")
+                print(f"✅ Processed {key}")
                 print(f"   → {dest_txt_key}")
                 print(f"   → {dest_metadata_key}")
 
             except json.JSONDecodeError:
-                print(f"Skipping {key}: invalid JSON.")
+                print(f"⚠️ Skipping {key}: invalid JSON.")
             except Exception as e:
-                print(f"Error processing {key}: {e}")
+                print(f"❌ Error processing {key}: {e}")
 
-
-
-
-import boto3
-import json
-from transformers import AutoTokenizer
 
 # -------------------------------
 # Summarization Helpers
 # -------------------------------
 
-import os
-from os.path import join, dirname
-from dotenv import load_dotenv
 
-def get_endpoint():
-    dotenv_path = join(dirname(__file__), '.env')
-    load_dotenv(dotenv_path)
-    return os.environ.get("SAGE_TS_ENDPOINT")
-
-endpoint_name = get_endpoint()
 
 def query_endpoint(encoded_text):
     client = boto3.client('runtime.sagemaker')
@@ -138,7 +139,7 @@ def get_summary(input_text):
         query_response = query_endpoint(input_text.encode('utf-8'))
     except Exception as e:
         if hasattr(e, "response") and e.response['Error']['Code'] == 'ModelError':
-            raise Exception(f"To use this notebook, please launch the endpoint again. Error: {e}.")
+            raise Exception(f"Model error, please launch the endpoint again. Error: {e}.")
         else:
             raise
             
@@ -155,10 +156,8 @@ def get_summary(input_text):
 # -------------------------------
 
 def summarize_json_files_from_s3(
-    source_bucket,
-    dest_bucket,
     date_prefix,
-    context_window=1024,
+    context_window=1000, # reduce context_window slightly from 1024 to reduce errors
     overlap=100
 ):
     """
@@ -175,10 +174,11 @@ def summarize_json_files_from_s3(
         context_window (int): Token limit per chunk.
         overlap (int): Overlap between chunks.
     """
-    s3 = boto3.client("s3")
+    s3 = boto3.client("s3", region_name="us-east-1")
     paginator = s3.get_paginator("list_objects_v2")
     pages = paginator.paginate(Bucket=source_bucket, Prefix=date_prefix)
 
+    # tokenizer for the model in the summarisation endpoint
     tokenizer = AutoTokenizer.from_pretrained("sshleifer/distilbart-cnn-12-6")
 
     for page in pages:
@@ -201,6 +201,9 @@ def summarize_json_files_from_s3(
                 content = data.get("content")
                 published_at = data.get("publishedAt")
                 topic = data.get("topic")
+                title = data.get("title")
+                dt = datetime.fromisoformat(published_at.replace("Z", "+00:00"))
+                unix_time = int(dt.timestamp())
 
                 if not content:
                     print(f"⚠️ Skipping {key}: missing 'content' field.")
@@ -211,7 +214,7 @@ def summarize_json_files_from_s3(
                 # -------------------------------
                 tokens = tokenizer(content, return_offsets_mapping=True, truncation=False)
                 input_ids = tokens["input_ids"]
-
+                print('Length of sequence:',len(input_ids))
                 if len(input_ids) > context_window:
                     print(f"✂️ Text exceeds {context_window} tokens; chunking required.")
                     chunks = []
@@ -219,21 +222,33 @@ def summarize_json_files_from_s3(
                     while start < len(input_ids):
                         end = start + context_window
                         chunk_tokens = input_ids[start:end]
-                        chunk_text = tokenizer.decode(chunk_tokens)
+                        chunk_text = tokenizer.decode(chunk_tokens).lstrip('<s>').rstrip('</s>')
                         chunks.append(chunk_text)
                         start += context_window - overlap
                 else:
                     chunks = [content]
 
+                # print('==============================')
+                
+                # for chunk in chunks:
+                #     tokens = tokenizer(chunk, return_offsets_mapping=True, truncation=False)
+                #     input_ids = tokens["input_ids"]
+                #     print(f"length of chunk text: {len(input_ids)}")
+                # print('==============================')
+
                 # -------------------------------
                 # Summarize and upload each chunk
                 # -------------------------------
                 for i, chunk_text in enumerate(chunks, start=1):
-                    summarized_text = 'bobobo' #get_summary(chunk_text)
+                    tokens = tokenizer(chunk_text, return_offsets_mapping=True, truncation=False)
+                    input_ids = tokens["input_ids"]
+                    
+                    summarized_text = "this should not be here"#get_summary(chunk_text)
 
                     # Derive destination keys
                     # e.g. 2025-10-11/economy_general/filename.json ->
                     #      2025-10-11/summarized/economy_general/filename.txt
+                    #      2025-10-11/summarized/economy_general/filename_metadata.txt
                     parts = key.split("/", 1)
                     date_dir, sub_path = parts
                     summarized_sub_path = f"summarized/{sub_path}"
@@ -249,16 +264,19 @@ def summarize_json_files_from_s3(
                     # Metadata file
                     metadata = {
                         "publishedAt": published_at,
-                        "topic": topic
+                        "unix_time": unix_time,
+                        "topic": topic,
+                        "title": title,
+                        "summary": 'yes'
                     }
 
                     # Upload summarized text
-                    s3.put_object(
-                        Bucket=dest_bucket,
-                        Key=txt_key,
-                        Body=summarized_text.encode("utf-8"),
-                        ContentType="text/plain"
-                    )
+                    # s3.put_object(
+                    #     Bucket=dest_bucket,
+                    #     Key=txt_key,
+                    #     Body=summarized_text.encode("utf-8"),
+                    #     ContentType="text/plain"
+                    # )
 
                     # Upload metadata
                     s3.put_object(
@@ -268,7 +286,7 @@ def summarize_json_files_from_s3(
                         ContentType="application/json"
                     )
 
-                    print(f"✅ Uploaded {txt_key}")
+                    #print(f"✅ Uploaded {txt_key}")
                     print(f"✅ Uploaded {meta_key}")
 
             except json.JSONDecodeError:
@@ -277,9 +295,40 @@ def summarize_json_files_from_s3(
                 print(f"❌ Error processing {key}: {e}")
 
 
-source_bucket = 'econolens-staging-area'
-dest_bucket = 'econolens-data-enriched'
-date_prefix = '2025-09-01'
+def summarize_and_copy(date_prefix):
+    try:
+        datetime.strptime(date_prefix, '%Y-%m-%d')
+    except ValueError:
+        raise AssertionError(f"Date string '{date_prefix}' does not follow YYYY-MM-DD format.")
+    
+    print("-----Begin data copy-----")
+    copy_json_files_from_s3(date_prefix)
+    print("-----End data copy-----\n")
 
-summarize_json_files_from_s3(source_bucket, dest_bucket, date_prefix)
+    print("-----Begin data summarise-----")
+    summarize_json_files_from_s3(date_prefix)
+    print("-----End data summarise-----\n")
+
+
+dotenv_path = join(dirname(__file__), '.env')
+load_dotenv(dotenv_path)
+source_bucket = os.environ.get("S3_SOURCE")
+dest_bucket = os.environ.get("S3_DESTINATION")
+endpoint_name = os.environ.get("SAGE_TS_ENDPOINT")
+
+summarize_and_copy('2025-09-01')
+# summarize_and_copy('2025-09-03')
+# summarize_and_copy('2025-09-02')
+# summarize_and_copy('2025-09-02')
+# summarize_and_copy('2025-09-02')
+
+#summarize_json_files_from_s3(source_bucket, dest_bucket, date_prefix)
 #copy_json_content_and_metadata(source_bucket, dest_bucket, date_prefix)
+
+# print("\n" + get_summary("""
+                         
+# Paris is the capital and most populous city of France, with an estimated population of 2,175,601 residents as of 2018, 
+# in an area of more than 105 square kilometres (41 square miles). The City of Paris is the centre and seat of government of the region and province of Île-de-France, 
+# or Paris Region, which has an estimated population of 12,174,880, or about 18 percent of the population of France as of 2017.
+                         
+# """))

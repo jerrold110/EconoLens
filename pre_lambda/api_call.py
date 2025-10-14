@@ -7,8 +7,10 @@ from dotenv import load_dotenv
 import json
 import re
 from datetime import datetime, timedelta
+import os
+from os.path import join, dirname
 
-# API key for GNews
+# API key for GNews from AWS secrets
 def get_gnews_api_key():
 
     secret_name = "Gnews-api-key"
@@ -35,7 +37,7 @@ def get_gnews_api_key():
 
 def store_article(folder_name, article, topic, s3_client):
 
-    bucket_name = "econolens-staging-area"
+    bucket_name = os.environ.get("S3_SOURCE")
 
     article_title = article['title'].replace(" ", "_")
     object_key = f"{folder_name}/{article_title}.json"
@@ -66,6 +68,7 @@ def process_topic(start_date_str:str, topic_str:str, apikey:str):
     date_prefix is in the format yyyy-mm-dd
     """
 
+    # search keywords for each topic
     keywords = {
         'economy_general': '(Tax) OR (Tariff)',
         'economy_long_term': '((American OR US) AND Economy) OR (National output) OR (National income)',
@@ -105,7 +108,7 @@ def process_topic(start_date_str:str, topic_str:str, apikey:str):
     print(f'------------ Start topic {topic_str} on {start_date_str} ------------')
     response = requests.get(url, params=params)
     # for debugging
-    print(json.dumps(response.json(), indent=4))
+    #print(json.dumps(response.json(), indent=4))
 
     if response.status_code == 200:
         
@@ -127,8 +130,10 @@ def process_date(start_date_str:str):
     """
     
     """
-    pattern = r"^\d{4}-\d{2}-\d{2}$"
-    assert (re.match(pattern, start_date_str))
+    try:
+        datetime.strptime(start_date_str, '%Y-%m-%d')
+    except ValueError:
+        raise AssertionError(f"Date string '{start_date_str}' does not follow YYYY-MM-DD format.")
 
     api_key = get_gnews_api_key()
     topics = ['economy_general', 'economy_long_term', 'labor_market', 'inflation', 'consumer_behavior', 'government_and_policy', 'corporate']
@@ -136,9 +141,20 @@ def process_date(start_date_str:str):
     for topic in topics:
         process_topic(start_date_str, topic, api_key)
 
-# process_date('2025-08-04')
-# process_date('2025-08-05')
-# process_date('2025-08-06')
-# process_date('2025-08-07')
-# process_date('2025-08-08')
-process_date('2025-09-01')
+dotenv_path = join(dirname(__file__), '.env')
+load_dotenv(dotenv_path)
+
+# process_date('2025-09-01')
+#process_date('2025-09-02')
+process_date('2025-09-03')
+process_date('2025-09-04')
+process_date('2025-09-05')
+process_date('2025-09-06')
+process_date('2025-09-07')
+process_date('2025-09-08')
+process_date('2025-09-09')
+process_date('2025-09-10')
+process_date('2025-09-11')
+process_date('2025-09-12')
+process_date('2025-09-13')
+process_date('2025-09-14')
