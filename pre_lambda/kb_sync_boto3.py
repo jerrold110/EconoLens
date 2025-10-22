@@ -10,6 +10,9 @@ import time
 load_dotenv()
 
 def sync_data_source():
+    """
+    start_ingestion_job is an asynchronous process, hence lambda timeout at 15 minutes is not an issue
+    """
 
     knowledge_base_id = os.getenv("BEDROCK_KB_ID")
     data_source_id = os.getenv("BEDROCK_KB_DATASOURCE_ID")

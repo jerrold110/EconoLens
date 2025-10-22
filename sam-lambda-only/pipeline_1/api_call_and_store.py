@@ -2,13 +2,11 @@ import boto3
 from botocore.exceptions import ClientError
 
 import requests
-from dotenv import load_dotenv
 
 import json
 import re
 from datetime import datetime, timedelta
 import os
-from os.path import join, dirname
 
 # API key for GNews from AWS secrets
 def get_gnews_api_key():
@@ -141,38 +139,43 @@ def process_date(start_date_str:str):
     for topic in topics:
         process_topic(start_date_str, topic, api_key)
 
-dotenv_path = join(dirname(__file__), '.env')
-load_dotenv(dotenv_path)
 
-process_date('2025-08-01')
-#process_date('2025-08-01')
-# process_date('2025-08-02')
-# process_date('2025-08-03')
-# process_date('2025-08-04')
-# process_date('2025-08-05')
-# process_date('2025-08-06')
-# process_date('2025-08-07')
-# process_date('2025-08-08')
-# process_date('2025-08-09')
-# process_date('2025-08-10')
-# process_date('2025-08-11')
-# process_date('2025-08-12')
-# process_date('2025-08-13')
-# process_date('2025-08-14')
-# process_date('2025-08-15')
-# process_date('2025-08-16')
-# process_date('2025-08-17')
-# process_date('2025-08-18')
-# process_date('2025-08-19')
-# process_date('2025-08-20')
-# process_date('2025-08-21')
-# process_date('2025-08-22')
-# process_date('2025-08-23')
-# process_date('2025-08-24')
-# process_date('2025-08-25')
-# process_date('2025-08-26')
-# process_date('2025-08-27')
-# process_date('2025-08-28')
-# process_date('2025-08-29')
-# process_date('2025-08-30')
-#print(get_gnews_api_key())
+def lambda_handler(event, context):
+    """Sample pure Lambda function
+
+    Parameters
+    ----------
+    event: dict, required
+        API Gateway Lambda Proxy Input Format
+
+        Event doc: https://docs.aws.amazon.com/apigateway/latest/developerguide/set-up-lambda-proxy-integrations.html#api-gateway-simple-proxy-for-lambda-input-format
+
+    context: object, required
+        Lambda Context runtime methods and attributes
+
+        Context doc: https://docs.aws.amazon.com/lambda/latest/dg/python-context-object.html
+
+    Returns
+    ------
+    API Gateway Lambda Proxy Output Format: dict
+
+        Return doc: https://docs.aws.amazon.com/apigateway/latest/developerguide/set-up-lambda-proxy-integrations.html
+    """
+
+    # try:
+    #     ip = requests.get("http://checkip.amazonaws.com/")
+    # except requests.RequestException as e:
+    #     # Send some context about this error to Lambda Logs
+    #     print(e)
+
+    #     raise e
+
+    process_date(event['batch_date'])
+
+    return {
+        "statusCode": 200,
+        "batch_date": event['batch_date'],
+        "body": json.dumps({
+            "message": f"Function process_date with argument {event['batch_date']} finished",
+        }),
+    }

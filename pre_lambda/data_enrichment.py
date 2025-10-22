@@ -348,9 +348,9 @@ def summarize_and_copy(date_prefix):
     copy_json_files_from_s3(date_prefix)
     print("-----End data copy-----\n")
 
-    print("-----Begin data summarise-----")
-    summarize_json_files_from_s3(date_prefix)
-    print("-----End data summarise-----\n")
+    # print("-----Begin data summarise-----")
+    # summarize_json_files_from_s3(date_prefix)
+    # print("-----End data summarise-----\n")
 
 
 dotenv_path = join(dirname(__file__), '.env')
