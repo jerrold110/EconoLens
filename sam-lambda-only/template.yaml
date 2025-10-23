@@ -14,7 +14,7 @@ Description: >
 # https://github.com/aws/aws-sam-cli/issues/7429
 Resources:
   APICallFunction:
-    Type: AWS::Serverless::Function # More info about Function Resource: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#awsserverlessfunction
+    Type: AWS::Serverless::Function
     Properties:
       CodeUri: pipeline_1/
       Handler: api_call_and_store.lambda_handler

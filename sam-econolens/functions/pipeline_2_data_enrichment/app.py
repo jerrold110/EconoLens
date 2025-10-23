@@ -1,23 +1,21 @@
 """
-In SAM environment variables are declared in template.yaml
-
 Using S3 client-side interaction as there only around 50 original article objects at each run
 
 Keywords prioritise relevent information over volume. It is better to have no data than irrelevant data.
-
 Metadata includes title of article for tracing RAG sources
 Metadata persons/orgs tags are lower-cased
 """
-
+print('App loaded')
 import boto3
 from botocore.exceptions import ClientError
 
+print('Loading spacy')
 import spacy
-import nltk
-nltk.download('punkt', quiet=True)
-nltk.download('stopwords', quiet=True)
-from nltk.corpus import stopwords
-from nltk.tokenize import word_tokenize
+print("spacy loaded")
+# print('Loading nltk')
+# from nltk.corpus import stopwords
+# from nltk.tokenize import word_tokenize
+# print('nltk loaded')
 
 import json
 from datetime import datetime
@@ -30,7 +28,9 @@ from os.path import join, dirname
 
 # Declare spacy and nltk variables once
 nlp = spacy.load('en_core_web_sm')
-stop_words = set(stopwords.words('english'))
+print("spacy.load('en_core_web_sm') complete ")
+stop_words = nlp.Defaults.stop_words  # spaCy's built-in stopwords set
+print("nlp.Defaults.stop_words complete ")
 
 def remove_non_ascii_encode_decode(text):
     """
@@ -38,18 +38,18 @@ def remove_non_ascii_encode_decode(text):
     """
     return text.encode('ascii', 'ignore').decode('ascii')
 
+def clean(phrase):
+        # Use spaCy tokenization and filter stopwords
+        tokens = [token.text.lower() for token in nlp(phrase) if token.text.lower() not in stop_words]
+        return ' '.join(tokens)
+
 def extract_persons_and_orgs(text):
     """
-    Extract the person and organisation entities from a body of text 
-    and return them as lowercase unique lists
+    Extract person and organization entities from text,
+    return them as lowercase unique lists with stopwords removed.
     """
     doc = nlp(text)
     persons, orgs = set(), set()
-
-    def clean(phrase):
-        tokens = word_tokenize(phrase.lower())
-        filtered = [w for w in tokens if w not in stop_words]
-        return ' '.join(filtered)
 
     for ent in doc.ents:
         if ent.label_ == 'PERSON':
@@ -76,6 +76,8 @@ def copy_json_files_from_s3(date_prefix):
 
     """
     s3 = boto3.client("s3", region_name="us-east-1")
+    source_bucket = os.environ.get("S3_SOURCE")
+    dest_bucket = os.environ.get("S3_DESTINATION")
 
     paginator = s3.get_paginator("list_objects_v2")
     pages = paginator.paginate(Bucket=source_bucket, Prefix=date_prefix)
@@ -170,10 +172,6 @@ def summarize_and_copy(date_prefix):
     print("-----Begin data copy-----")
     copy_json_files_from_s3(date_prefix)
     print("-----End data copy-----\n")
-
-
-source_bucket = os.environ.get("S3_SOURCE")
-dest_bucket = os.environ.get("S3_DESTINATION")
 
 def lambda_handler(event, context):
 

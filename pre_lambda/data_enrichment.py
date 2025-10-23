@@ -13,11 +13,11 @@ import boto3
 from botocore.exceptions import ClientError
 from transformers import AutoTokenizer
 import spacy
-import nltk
-nltk.download('punkt', quiet=True)
-nltk.download('stopwords', quiet=True)
-from nltk.corpus import stopwords
-from nltk.tokenize import word_tokenize
+# import nltk
+# nltk.download('punkt', quiet=True)
+# nltk.download('stopwords', quiet=True)
+# from nltk.corpus import stopwords
+# from nltk.tokenize import word_tokenize
 
 from dotenv import load_dotenv
 
@@ -66,7 +66,7 @@ def get_summary(input_text):
 
 # Declare spacy and nltk variables once
 nlp = spacy.load('en_core_web_sm')
-stop_words = set(stopwords.words('english'))
+stop_words = nlp.Defaults.stop_words  # spaCy's built-in stopwords set
 
 def remove_non_ascii_encode_decode(text):
     """
@@ -76,16 +76,16 @@ def remove_non_ascii_encode_decode(text):
 
 def extract_persons_and_orgs(text):
     """
-    Extract the person and organisation entities from a body of text 
-    and return them as lowercase unique lists
+    Extract person and organization entities from text,
+    return them as lowercase unique lists with stopwords removed.
     """
     doc = nlp(text)
     persons, orgs = set(), set()
 
     def clean(phrase):
-        tokens = word_tokenize(phrase.lower())
-        filtered = [w for w in tokens if w not in stop_words]
-        return ' '.join(filtered)
+        # Use spaCy tokenization and filter stopwords
+        tokens = [token.text.lower() for token in nlp(phrase) if token.text.lower() not in stop_words]
+        return ' '.join(tokens)
 
     for ent in doc.ents:
         if ent.label_ == 'PERSON':
@@ -359,7 +359,7 @@ source_bucket = os.environ.get("S3_SOURCE")
 dest_bucket = os.environ.get("S3_DESTINATION")
 endpoint_name = os.environ.get("SAGE_TS_ENDPOINT")
 
-summarize_and_copy('2025-08-01')
+summarize_and_copy('2025-08-02')
 
 # summarize_and_copy('2025-09-01')
 # summarize_and_copy('2025-09-03')

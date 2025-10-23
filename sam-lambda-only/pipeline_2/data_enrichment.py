@@ -76,6 +76,8 @@ def copy_json_files_from_s3(date_prefix):
 
     """
     s3 = boto3.client("s3", region_name="us-east-1")
+    source_bucket = os.environ.get("S3_SOURCE")
+    dest_bucket = os.environ.get("S3_DESTINATION")
 
     paginator = s3.get_paginator("list_objects_v2")
     pages = paginator.paginate(Bucket=source_bucket, Prefix=date_prefix)
@@ -170,10 +172,6 @@ def summarize_and_copy(date_prefix):
     print("-----Begin data copy-----")
     copy_json_files_from_s3(date_prefix)
     print("-----End data copy-----\n")
-
-
-source_bucket = os.environ.get("S3_SOURCE")
-dest_bucket = os.environ.get("S3_DESTINATION")
 
 def lambda_handler(event, context):
 
