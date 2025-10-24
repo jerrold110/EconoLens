@@ -1,0 +1,92 @@
+{
+  "Comment": "Econolens Data Pipeline – three Lambda functions orchestrated with retry logic",
+  "StartAt": "APICallStep",
+  "States": {
+    "APICallStep": {
+      "Type": "Task",
+      "Resource": "${APICallFunctionArn}",
+      "Next": "DataEnrichmentStep",
+      "Retry": [
+        {
+          "ErrorEquals": ["States.TaskFailed"],
+          "IntervalSeconds": 5,
+          "MaxAttempts": 3,
+          "BackoffRate": 2.0
+        },
+        {
+          "ErrorEquals": ["Lambda.ServiceException", "Lambda.AWSLambdaException", "Lambda.SdkClientException"],
+          "IntervalSeconds": 10,
+          "MaxAttempts": 2,
+          "BackoffRate": 2.0
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "ResultPath": "$.error",
+          "Next": "FailState"
+        }
+      ]
+    },
+
+    "DataEnrichmentStep": {
+      "Type": "Task",
+      "Resource": "${DataEnrichmentFunctionArn}",
+      "Next": "BedrockIngestStep",
+      "Retry": [
+        {
+          "ErrorEquals": ["States.TaskFailed"],
+          "IntervalSeconds": 5,
+          "MaxAttempts": 3,
+          "BackoffRate": 2.0
+        },
+        {
+          "ErrorEquals": ["Lambda.ServiceException", "Lambda.AWSLambdaException", "Lambda.SdkClientException"],
+          "IntervalSeconds": 10,
+          "MaxAttempts": 2,
+          "BackoffRate": 2.0
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "ResultPath": "$.error",
+          "Next": "FailState"
+        }
+      ]
+    },
+
+    "BedrockIngestStep": {
+      "Type": "Task",
+      "Resource": "${BedrockKBIngestFunctionArn}",
+      "End": true,
+      "Retry": [
+        {
+          "ErrorEquals": ["States.TaskFailed"],
+          "IntervalSeconds": 5,
+          "MaxAttempts": 3,
+          "BackoffRate": 2.0
+        },
+        {
+          "ErrorEquals": ["Lambda.ServiceException", "Lambda.AWSLambdaException", "Lambda.SdkClientException"],
+          "IntervalSeconds": 10,
+          "MaxAttempts": 2,
+          "BackoffRate": 2.0
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "ResultPath": "$.error",
+          "Next": "FailState"
+        }
+      ]
+    },
+
+    "FailState": {
+      "Type": "Fail",
+      "Cause": "PipelineFailed",
+      "Error": "StepFunctionExecutionError"
+    }
+  }
+}

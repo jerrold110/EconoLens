@@ -1,1 +1,1 @@
-environment variables must be defined inside the function, outside seems to not work
+environment variables must be defined inside the function, outside out the function seems to not work at time???

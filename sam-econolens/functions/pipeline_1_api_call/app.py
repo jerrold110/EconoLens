@@ -4,7 +4,6 @@ from botocore.exceptions import ClientError
 import requests
 
 import json
-import re
 from datetime import datetime, timedelta
 import os
 

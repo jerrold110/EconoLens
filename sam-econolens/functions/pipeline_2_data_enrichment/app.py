@@ -5,17 +5,10 @@ Keywords prioritise relevent information over volume. It is better to have no da
 Metadata includes title of article for tracing RAG sources
 Metadata persons/orgs tags are lower-cased
 """
-print('App loaded')
 import boto3
 from botocore.exceptions import ClientError
 
-print('Loading spacy')
 import spacy
-print("spacy loaded")
-# print('Loading nltk')
-# from nltk.corpus import stopwords
-# from nltk.tokenize import word_tokenize
-# print('nltk loaded')
 
 import json
 from datetime import datetime
@@ -27,14 +20,14 @@ from os.path import join, dirname
 # -------------------------------
 
 # Declare spacy and nltk variables once
+print("executing line > spacy.load('en_core_web_sm')")
 nlp = spacy.load('en_core_web_sm')
 print("spacy.load('en_core_web_sm') complete ")
 stop_words = nlp.Defaults.stop_words  # spaCy's built-in stopwords set
-print("nlp.Defaults.stop_words complete ")
 
 def remove_non_ascii_encode_decode(text):
     """
-    Remove non ascii characters from a string
+    Remove non ascii characters from a string. Cleans text in articles before extraction, and ingestion into bedrock knowledge base
     """
     return text.encode('ascii', 'ignore').decode('ascii')
 
@@ -75,14 +68,19 @@ def copy_json_files_from_s3(date_prefix):
         → dest: 2025-10-11/original/economy_general/filename.metadata.json
 
     """
+    print("copy_json_files_from_s3() inside")
     s3 = boto3.client("s3", region_name="us-east-1")
+    print("s3 client loaded")
     source_bucket = os.environ.get("S3_SOURCE")
     dest_bucket = os.environ.get("S3_DESTINATION")
+    print("variables loaded")
+    print(s3, source_bucket, dest_bucket)
 
     paginator = s3.get_paginator("list_objects_v2")
     pages = paginator.paginate(Bucket=source_bucket, Prefix=date_prefix)
 
     for page in pages:
+        print("loop start")
         for obj in page.get("Contents", []):
             key = obj["Key"]
 
@@ -108,7 +106,7 @@ def copy_json_files_from_s3(date_prefix):
                 # Build destination path components
                 # Example:
                 # 2025-10-11/economy_general/filename.json
-                # → 2025-10-11/original/economy_general/filename.txt
+                # → 2025-10-11/economy_general/filename.txt
                 parts = key.split("/", 1)
                 if len(parts) < 2:
                     print(f"⚠️ Skipping {key}: unexpected key format.")
@@ -120,8 +118,8 @@ def copy_json_files_from_s3(date_prefix):
                 sub_path_metadata = sub_path.replace(".json", ".metadata.json")
 
                 # Build destination keys
-                dest_txt_key = f"{date_prefix_dir}/original/{sub_path_txt}"
-                dest_metadata_key = f"{date_prefix_dir}/original/{sub_path_metadata}"
+                dest_txt_key = f"{date_prefix_dir}/{sub_path_txt}"
+                dest_metadata_key = f"{date_prefix_dir}/{sub_path_metadata}"
 
                 # Upload text file
                 s3.put_object(

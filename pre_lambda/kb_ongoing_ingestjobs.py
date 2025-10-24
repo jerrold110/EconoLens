@@ -11,8 +11,8 @@ client = boto3.client("bedrock-agent", region_name="us-east-1")
 # print(json.dumps(response, indent=2))
 
 docs = client.list_knowledge_base_documents(
-    knowledgeBaseId="GETBPVLI55",
-    dataSourceId="DT0NM2KJX3"
+    knowledgeBaseId="UBOWHZSNBG",
+    dataSourceId="FPFIQDISSE"
 )
 
 print(docs)

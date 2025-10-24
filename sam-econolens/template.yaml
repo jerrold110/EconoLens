@@ -7,13 +7,33 @@ Description: >
 # More info about Globals: https://github.com/awslabs/serverless-application-model/blob/master/docs/globals.rst
 Globals:
   Function:
-    Timeout: 60 # Seconds
+    Timeout: 180 # Seconds
     Environment:
       Variables:
         S3_SOURCE: econolens-staging-area
         S3_DESTINATION: econolens-data-enriched
+        BEDROCK_KB_ID: UBOWHZSNBG
+        BEDROCK_KB_DATASOURCE_ID: FPFIQDISSE
 
 Resources:
+  NewsPipelineStateMachine:
+    Type: AWS::Serverless::StateMachine
+    Properties:
+      DefinitionUri: statemachine/news_pipeline.asl.json
+      DefinitionSubstitutions:
+        APICallFunctionArn: !GetAtt APICallFunction.Arn
+        DataEnrichmentFunctionArn: !GetAtt DataEnrichmentFunction.Arn
+        BedrockKBIngestFunctionArn: !GetAtt BedrockKBIngestFunction.Arn
+      Policies: # SAM policy templates: https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/serverless-policy-templates.html
+        - LambdaInvokePolicy:
+            FunctionName: !Ref APICallFunction
+        - LambdaInvokePolicy:
+            FunctionName: !Ref DataEnrichmentFunction
+        - LambdaInvokePolicy:
+            FunctionName: !Ref BedrockKBIngestFunction
+
+      #Events:
+
   APICallFunction:
     Type: AWS::Serverless::Function # More info about Function Resource: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#awsserverlessfunction
     Properties:
@@ -21,33 +41,37 @@ Resources:
       Architectures:
         - x86_64
       Role: arn:aws:iam::975373241930:role/EconolensAPICALLANDSTOREAccess
-      
-      # Events:
-      #   HelloWorld:
-      #     Type: Api # More info about API Event Source: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#api
-      #     Properties:
-      #       Path: /hello
-      #       Method: get
     Metadata:
       Dockerfile: Dockerfile
       DockerContext: ./functions/pipeline_1_api_call
       DockerTag: python3.11-v1
     
   DataEnrichmentFunction:
-    Type: AWS::Serverless::Function # More info about Function Resource: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#awsserverlessfunction
+    Type: AWS::Serverless::Function
     Properties:
       PackageType: Image
       Architectures:
         - x86_64
       Role: arn:aws:iam::975373241930:role/EconolensDATAENRICHMENTAccess
-      # Environment:
-      #   Variables:
-      #     NLTK_DATA: /root/nltk_data
+      # increasedfor loading en_core_web_sm model. default is 128 MB https://docs.aws.amazon.com/lambda/latest/dg/configuration-memory.html#configuration-memory-use-cases 
+      MemorySize: 512 
     Metadata:
       Dockerfile: Dockerfile
       DockerContext: ./functions/pipeline_2_data_enrichment
       DockerTag: python3.11-v1
 
+  BedrockKBIngestFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      PackageType: Image
+      Architectures:
+        - x86_64
+      Role: arn:aws:iam::975373241930:role/EconolensKBSYNCAccess
+    Metadata:
+      Dockerfile: Dockerfile
+      DockerContext: ./functions/pipeline_3_bedrockKB_ingest
+      DockerTag: python3.11-v1
+  
 # Outputs:
   # ServerlessRestApi is an implicit API created out of Events key under Serverless::Function
   # Find out more about other implicit resources you can reference within SAM

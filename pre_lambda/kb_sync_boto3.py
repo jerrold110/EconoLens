@@ -27,7 +27,7 @@ def sync_data_source():
     bedrock_job_id = response['ingestionJob']['ingestionJobId']
 
     print("A new BKB ingestion job started with ID:", bedrock_job_id)
-
+    print(str(response))
     # Wait until ingestion job completes
     print("Waiting until BKB ingestion job completes: ", end='')
     start_time = time.time()
