@@ -11,7 +11,7 @@ from botocore.exceptions import ClientError
 import spacy
 
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 import os
 from os.path import join, dirname
 
@@ -55,6 +55,8 @@ def extract_persons_and_orgs(text):
 # -------------------------------
 # Main Function
 # -------------------------------
+source_bucket = os.environ.get("S3_SOURCE")
+dest_bucket = os.environ.get("S3_DESTINATION")
 
 def copy_json_files_from_s3(date_prefix):
     """
@@ -68,19 +70,16 @@ def copy_json_files_from_s3(date_prefix):
         → dest: 2025-10-11/original/economy_general/filename.metadata.json
 
     """
-    print("copy_json_files_from_s3() inside")
     s3 = boto3.client("s3", region_name="us-east-1")
-    print("s3 client loaded")
-    source_bucket = os.environ.get("S3_SOURCE")
-    dest_bucket = os.environ.get("S3_DESTINATION")
-    print("variables loaded")
+    
+    print("client, source_bucket, dest_bucket: ")
     print(s3, source_bucket, dest_bucket)
 
     paginator = s3.get_paginator("list_objects_v2")
     pages = paginator.paginate(Bucket=source_bucket, Prefix=date_prefix)
 
     for page in pages:
-        print("loop start")
+        #print("loop start")
         for obj in page.get("Contents", []):
             key = obj["Key"]
 
@@ -161,11 +160,15 @@ def copy_json_files_from_s3(date_prefix):
 # Main Function
 # -------------------------------
 
-def summarize_and_copy(date_prefix):
+def summarize_and_copy(datetime_input:str):
     try:
-        datetime.strptime(date_prefix, '%Y-%m-%d')
+        datetime.strptime(datetime_input, '%Y-%m-%dT%H:%M:%SZ')
+        # Parse string, then back into string with new format
+        date_prefix = datetime.strptime(datetime_input, '%Y-%m-%dT%H:%M:%SZ') - timedelta(days=1) # move start_date_str back one day
+        date_prefix = date_prefix.strftime("%Y-%m-%d")
+        print(f"Function input: {date_prefix}")
     except ValueError:
-        raise AssertionError(f"Date string '{date_prefix}' does not follow YYYY-MM-DD format.")
+        raise AssertionError(f"Date string '{datetime_input}' does not follow %Y-%m-%dT%H:%M:%SZ format.")
     
     print("-----Begin data copy-----")
     copy_json_files_from_s3(date_prefix)

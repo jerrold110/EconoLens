@@ -5,6 +5,10 @@ import json
 import time
 import os
 
+knowledge_base_id = os.getenv("BEDROCK_KB_ID")
+data_source_id = os.getenv("BEDROCK_KB_DATASOURCE_ID")
+# bedrock_apikey = os.getenv("BEDROCK_TOKEN")
+
 def sync_data_source():
     """
     start_ingestion_job is an asynchronous process, hence lambda timeout at 15 minutes is not an issue
@@ -12,10 +16,6 @@ def sync_data_source():
     Response documentation
     https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/bedrock-agent/client/start_ingestion_job.html
     """
-
-    knowledge_base_id = os.getenv("BEDROCK_KB_ID")
-    data_source_id = os.getenv("BEDROCK_KB_DATASOURCE_ID")
-    # bedrock_apikey = os.getenv("BEDROCK_TOKEN")
 
     bedrock_agent_client = boto3.client('bedrock-agent')
 
@@ -55,8 +55,10 @@ def sync_data_source():
     
     except BotoCoreError as e:
         print(f"Low-level Boto3/Botocore error: {e}")
+        raise
     except Exception as e:
         print(f"An unexpected error occurred: {e}")
+        raise
 
 
 def lambda_handler(event, context):

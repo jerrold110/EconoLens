@@ -19,33 +19,37 @@ def sync_data_source():
     bedrock_apikey = os.getenv("BEDROCK_TOKEN")
 
     bedrock_agent_client = boto3.client('bedrock-agent')
+    try:
+        response = bedrock_agent_client.start_ingestion_job(
+            knowledgeBaseId=knowledge_base_id,
+            dataSourceId=data_source_id)
 
-    response = bedrock_agent_client.start_ingestion_job(
-        knowledgeBaseId=knowledge_base_id,
-        dataSourceId=data_source_id)
+        bedrock_job_id = response['ingestionJob']['ingestionJobId']
 
-    bedrock_job_id = response['ingestionJob']['ingestionJobId']
+        print("A new BKB ingestion job started with ID:", bedrock_job_id)
+        print(str(response))
+        # Wait until ingestion job completes
+        print("Waiting until BKB ingestion job completes: ", end='')
+        start_time = time.time()
+        while True:
+            response = bedrock_agent_client.get_ingestion_job(
+                knowledgeBaseId = knowledge_base_id,
+                dataSourceId = data_source_id,
+                ingestionJobId = bedrock_job_id)
+            if response['ingestionJob']['status'] == 'COMPLETE':
+                print(" done.")
+                end_time = time.time()
+                break
+            print('█', end='', flush=True)
+            time.sleep(5)
 
-    print("A new BKB ingestion job started with ID:", bedrock_job_id)
-    print(str(response))
-    # Wait until ingestion job completes
-    print("Waiting until BKB ingestion job completes: ", end='')
-    start_time = time.time()
-    while True:
-        response = bedrock_agent_client.get_ingestion_job(
-            knowledgeBaseId = knowledge_base_id,
-            dataSourceId = data_source_id,
-            ingestionJobId = bedrock_job_id)
-        if response['ingestionJob']['status'] == 'COMPLETE':
-            print(" done.")
-            end_time = time.time()
-            break
-        print('█', end='', flush=True)
-        time.sleep(5)
+        print("The BKB ingestion job finished:", json.dumps(response['ingestionJob'], indent=2, default=str))
 
-    print("The BKB ingestion job finished:", json.dumps(response['ingestionJob'], indent=2, default=str))
+        elapsed_time = end_time - start_time  
+        print(f"Time taken: {elapsed_time} seconds")
 
-    elapsed_time = end_time - start_time  
-    print(f"Time taken: {elapsed_time} seconds")
+    except Exception as e:
+        print(f"An unexpected error occurred: {e}")
+        raise
 
 sync_data_source()

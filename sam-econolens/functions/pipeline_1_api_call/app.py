@@ -7,6 +7,8 @@ import json
 from datetime import datetime, timedelta
 import os
 
+bucket_name = os.environ.get("S3_SOURCE")
+
 # API key for GNews from AWS secrets
 def get_gnews_api_key():
 
@@ -34,7 +36,7 @@ def get_gnews_api_key():
     return secret['GNEWS_API_KEY'] # GNEWS_API_KEY is the key of the secret
 
 def store_article(folder_name, article, topic, s3_client):
-    bucket_name = os.environ.get("S3_SOURCE")
+    
     article_title = article['title'].replace(" ", "_")
     object_key = f"{folder_name}/{article_title}.json"
 
@@ -130,31 +132,31 @@ def process_topic(start_date_str:str, topic_str:str, apikey:str):
     print(f"Ingested {ingested_count} out of {article_count} articles")
     print(f'------------ End topic {topic_str} on {start_date_str} ------------ \n')
 
-def process_date(start_date_str:str):
+def process_date(input_datetime_str:str):
     """
-    
+    Process the data on previous day's date. Input comes from eventbridge context object in ISO 8601 format.
+    https://docs.aws.amazon.com/scheduler/latest/UserGuide/managing-schedule-context-attributes.html
     """
     try:
-        datetime.strptime(start_date_str, '%Y-%m-%d')
+        datetime.strptime(input_datetime_str, '%Y-%m-%dT%H:%M:%SZ') # throws an error if input format is different
+        previous_date = datetime.strptime(input_datetime_str, '%Y-%m-%dT%H:%M:%SZ') - timedelta(days=1) # move start_date_str back one day
+        ystd_date_str = previous_date.strftime("%Y-%m-%d")
+        print(f"->input_datetime_str,: {input_datetime_str,}\n->ystd_date_str: {ystd_date_str}")
+
     except ValueError:
-        raise AssertionError(f"Date string '{start_date_str}' does not follow YYYY-MM-DD format.")
+        raise AssertionError(f"Date string '{input_datetime_str},' does not follow %Y-%m-%dT00:00:00.000Z format.")
 
     api_key = get_gnews_api_key()
     topics = ['economy_general', 'economy_long_term', 'labor_market', 'inflation', 'consumer_behavior', 'government_and_policy', 'corporate']
 
     for topic in topics:
-        process_topic(start_date_str, topic, api_key)
+        process_topic(ystd_date_str, topic, api_key)
 
 
 def lambda_handler(event, context):
-
-    # try:
-    #     ip = requests.get("http://checkip.amazonaws.com/")
-    # except requests.RequestException as e:
-    #     # Send some context about this error to Lambda Logs
-    #     print(e)
-
-    #     raise e
+    """
+    
+    """
 
     process_date(event['batch_date'])
 
