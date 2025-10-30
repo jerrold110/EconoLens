@@ -45,19 +45,18 @@ payload = {
 session = boto3.Session()
 credentials = session.get_credentials().get_frozen_credentials()
 
-# Prepare SigV4 signed request
 aws_request = AWSRequest(
-    method="PUT",
     url=url,
-    data=json.dumps(payload),
+    method="PUT",
     headers={
         "Host": host,
         "Content-Type": "application/json",
     },
+    data=json.dumps(payload)
 )
+
 SigV4Auth(credentials, service, region).add_auth(aws_request)
 
-# Send request
 response = requests.put(
     url,
     headers=dict(aws_request.headers),

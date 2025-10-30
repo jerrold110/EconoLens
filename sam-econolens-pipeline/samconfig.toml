@@ -3,7 +3,7 @@
 version = 0.1
 
 [default.global.parameters]
-stack_name = "sam-econolens"
+stack_name = "sam-econolens-pipeline"
 region = "us-east-1"
 
 [default.build.parameters]
@@ -17,7 +17,7 @@ capabilities = "CAPABILITY_IAM"
 confirm_changeset = true
 resolve_s3 = true
 resolve_image_repos = true
-s3_prefix = "sam-econolens"
+s3_prefix = "sam-econolens-pipeline"
 
 [default.package.parameters]
 resolve_s3 = true
