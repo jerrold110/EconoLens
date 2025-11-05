@@ -16,6 +16,70 @@ Globals:
         BEDROCK_KB_DATASOURCE_ID: SVQMEHRJIE
 
 Resources:
+  # IAM roles created with AWS managed IAM policies
+  EconolensAPICALLANDSTORERole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action: "sts:AssumeRole"
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        - arn:aws:iam::aws:policy/AmazonS3FullAccess
+        - arn:aws:iam::aws:policy/SecretsManagerReadWrite
+  
+  EconolensDATAENRICHMENTRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action: "sts:AssumeRole"
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        - arn:aws:iam::aws:policy/AmazonS3FullAccess
+
+  EconolensKBSYNCRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action: "sts:AssumeRole"
+      # https://docs.aws.amazon.com/bedrock/latest/userguide/knowledge-base-prereq-permissions-general.html
+      Policies:
+        - PolicyName: BedrockKBManagementPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - bedrock:GetKnowledgeBase
+                  - bedrock:ListKnowledgeBases
+                  - bedrock:UpdateKnowledgeBase
+                  - bedrock:DeleteKnowledgeBase
+                  - bedrock:StartIngestionJob
+                  - bedrock:GetIngestionJob
+                  - bedrock:ListIngestionJobs
+                  - bedrock:StopIngestionJob
+                  - bedrock:TagResource
+                  - bedrock:UntagResource
+                Resource: '*' 
+
+  # Infrastructure
   NewsPipelineStateMachine:
     Type: AWS::Serverless::StateMachine
     Properties:
@@ -51,7 +115,7 @@ Resources:
       PackageType: Image
       Architectures:
         - x86_64
-      Role: arn:aws:iam::975373241930:role/EconolensAPICALLANDSTOREAccess
+      Role: !GetAtt EconolensAPICALLANDSTORERole.Arn
     Metadata:
       Dockerfile: Dockerfile
       DockerContext: ./functions/pipeline_1_api_call
@@ -63,7 +127,7 @@ Resources:
       PackageType: Image
       Architectures:
         - x86_64
-      Role: arn:aws:iam::975373241930:role/EconolensDATAENRICHMENTAccess
+      Role: !GetAtt EconolensDATAENRICHMENTRole.Arn
       # increasedfor loading en_core_web_sm model. default is 128 MB https://docs.aws.amazon.com/lambda/latest/dg/configuration-memory.html#configuration-memory-use-cases 
       MemorySize: 512 
     Metadata:
@@ -77,22 +141,34 @@ Resources:
       PackageType: Image
       Architectures:
         - x86_64
-      Role: arn:aws:iam::975373241930:role/EconolensKBSYNCAccess
+      Role: !GetAtt EconolensKBSYNCRole.Arn
     Metadata:
       Dockerfile: Dockerfile
       DockerContext: ./functions/pipeline_3_bedrockKB_ingest
       DockerTag: python3.11-v1
   
-# Outputs:
-  # ServerlessRestApi is an implicit API created out of Events key under Serverless::Function
-  # Find out more about other implicit resources you can reference within SAM
-  # https://github.com/awslabs/serverless-application-model/blob/master/docs/internals/generated_resources.rst#api
-  # HelloWorldApi:
-  #   Description: "API Gateway endpoint URL for Prod stage for Hello World function"
-  #   Value: !Sub "https://${ServerlessRestApi}.execute-api.${AWS::Region}.${AWS::URLSuffix}/Prod/hello/"
-  # HelloWorldFunction:
-  #   Description: "Hello World Lambda Function ARN"
-  #   Value: !GetAtt HelloWorldFunction.Arn
-  # HelloWorldFunctionIamRole:
-  #   Description: "Implicit IAM Role created for Hello World function"
-  #   Value: !GetAtt HelloWorldFunctionRole.Arn
+Outputs:
+  APICallFunctionArn:
+    Description: ARN of the API Call Lambda function
+    Value: !GetAtt APICallFunction.Arn
+
+  DataEnrichmentFunctionArn:
+    Description: ARN of the Data Enrichment Lambda function
+    Value: !GetAtt DataEnrichmentFunction.Arn
+
+  BedrockKBIngestFunctionArn:
+    Description: ARN of the Bedrock KB Ingest Lambda function
+    Value: !GetAtt BedrockKBIngestFunction.Arn
+
+  EconolensAPICALLANDSTORERoleArn:
+    Description: ARN of the API Call Lambda Role
+    Value: !GetAtt EconolensAPICALLANDSTORERole.Arn
+
+  EconolensDATAENRICHMENTRoleArn:
+    Description: ARN of the Data Enrichment Lambda Role
+    Value: !GetAtt EconolensDATAENRICHMENTRole.Arn
+
+  EconolensKBSYNCRoleArn:
+    Description: ARN of the Bedrock KB Sync Lambda Role
+    Value: !GetAtt EconolensKBSYNCRole.Arn
+
