@@ -11,8 +11,9 @@ Metadata persons/orgs tags are lower-cased
 
 import boto3
 from botocore.exceptions import ClientError
-from transformers import AutoTokenizer
+#from transformers import AutoTokenizer
 import spacy
+import re
 # import nltk
 # nltk.download('punkt', quiet=True)
 # nltk.download('stopwords', quiet=True)
@@ -31,34 +32,34 @@ from dotenv import load_dotenv
 # Summarization functions
 # -------------------------------
 
-def query_endpoint(encoded_text):
-    client = boto3.client('runtime.sagemaker')
-    response = client.invoke_endpoint(
-        EndpointName=endpoint_name,
-        ContentType='application/x-text',
-        Body=encoded_text
-    )
-    return response
+# def query_endpoint(encoded_text):
+#     client = boto3.client('runtime.sagemaker')
+#     response = client.invoke_endpoint(
+#         EndpointName=endpoint_name,
+#         ContentType='application/x-text',
+#         Body=encoded_text
+#     )
+#     return response
 
-def parse_response(response):
-    model_predictions = json.loads(response['Body'].read())
-    return model_predictions['summary_text']
+# def parse_response(response):
+#     model_predictions = json.loads(response['Body'].read())
+#     return model_predictions['summary_text']
 
-def get_summary(input_text):
-    try:
-        query_response = query_endpoint(input_text.encode('utf-8'))
-    except Exception as e:
-        if hasattr(e, "response") and e.response['Error']['Code'] == 'ModelError':
-            raise Exception(f"Model error, please launch the endpoint again. Error: {e}.")
-        else:
-            raise
+# def get_summary(input_text):
+#     try:
+#         query_response = query_endpoint(input_text.encode('utf-8'))
+#     except Exception as e:
+#         if hasattr(e, "response") and e.response['Error']['Code'] == 'ModelError':
+#             raise Exception(f"Model error, please launch the endpoint again. Error: {e}.")
+#         else:
+#             raise
             
-    try:
-        summary_text = parse_response(query_response)
-    except (TypeError, KeyError) as e:
-        raise Exception(e)
+#     try:
+#         summary_text = parse_response(query_response)
+#     except (TypeError, KeyError) as e:
+#         raise Exception(e)
 
-    return summary_text
+#     return summary_text
 
 # -------------------------------
 # Helpers functions
@@ -68,11 +69,26 @@ def get_summary(input_text):
 nlp = spacy.load('en_core_web_sm')
 stop_words = nlp.Defaults.stop_words  # spaCy's built-in stopwords set
 
-def remove_non_ascii_encode_decode(text):
-    """
-    Remove non ascii characters from a string
-    """
-    return text.encode('ascii', 'ignore').decode('ascii')
+# def remove_non_ascii_encode_decode(text):
+#     """
+#     Remove non ascii characters from a string
+#     """
+#     return text.encode('ascii', 'ignore').decode('ascii')
+
+# def remove_escape_sequences(text):
+#     """
+#     Replace common escape sequences in a string with a single space.
+#     """
+#     # Matches: \n, \t, \r, \b, \f, \a, \v, \', \", \\, \xhh, \uhhhh, \Uhhhhhhhh
+#     pattern = r'\\[abfnrtv\'"\\]|\\x[0-9A-Fa-f]{2}|\\u[0-9A-Fa-f]{4}|\\U[0-9A-Fa-f]{8}'
+    
+#     # Replace escape sequences with a single space
+#     cleaned = re.sub(pattern, ' ', text)
+    
+#     # Optionally, collapse multiple spaces into one
+#     cleaned = re.sub(r'\s+', ' ', cleaned).strip()
+    
+#     return cleaned
 
 def extract_persons_and_orgs(text):
     """
@@ -94,6 +110,48 @@ def extract_persons_and_orgs(text):
             orgs.add(clean(ent.text))
 
     return list(persons), list(orgs)
+
+
+import re
+import unicodedata
+
+def clean_text_for_ingestion(text: str) -> str:
+    """
+    Clean a string of text to make it safe for ingestion into
+    semantic search or knowledge base systems (e.g., Bedrock + OpenSearch).
+    
+    Steps:
+      1. Normalize Unicode characters (smart quotes, accented chars)
+      2. Remove non-printable control characters
+      3. Replace escape sequences with spaces
+      4. Normalize whitespace and newlines
+      5. Strip leading/trailing spaces
+    """
+    if not isinstance(text, str):
+        text = str(text)
+
+    # 1️⃣ Normalize Unicode (e.g., smart quotes → normal quotes)
+    text = unicodedata.normalize("NFKC", text)
+
+    # 2️⃣ Remove control characters (ASCII 0–31, except \n and \t)
+    text = re.sub(r"[\x00-\x09\x0B\x0C\x0E-\x1F\x7F-\x9F]", " ", text)
+
+    # 3️⃣ Replace visible escape sequences (\n, \t, etc.) with spaces
+    text = re.sub(
+        r"\\[abfnrtv'\"\\]|\\x[0-9A-Fa-f]{2}|\\u[0-9A-Fa-f]{4}|\\U[0-9A-Fa-f]{8}",
+        " ",
+        text,
+    )
+
+    # 4️⃣ Normalize whitespace (collapse multiple spaces or newlines)
+    text = re.sub(r"[ \t]+", " ", text)     # collapse spaces/tabs
+    text = re.sub(r"\s*\n\s*", "\n", text)  # tidy up newlines
+    text = re.sub(r"\n{3,}", "\n\n", text)  # limit multiple blank lines
+
+    # 5️⃣ Strip leading/trailing whitespace
+    text = text.strip()
+
+    return text
 
 # -------------------------------
 # Main Function
@@ -130,8 +188,8 @@ def copy_json_files_from_s3(date_prefix):
                 response = s3.get_object(Bucket=source_bucket, Key=key)
                 data = json.loads(response["Body"].read().decode("utf-8"))
 
-                # Extract fields
-                content = remove_non_ascii_encode_decode(data.get("content"))
+                # Extract fields and clean data
+                content = clean_text_for_ingestion(data.get("content"))
                 persons_metadata, orgs_metadata = extract_persons_and_orgs(content)
                 published_at = data.get("publishedAt")
                 topic = data.get("topic")
@@ -151,11 +209,11 @@ def copy_json_files_from_s3(date_prefix):
                 date_prefix_dir = parts[0]              # e.g., "2025-10-11"
                 sub_path = parts[1]                     # e.g., "economy_general/filename.json"
                 sub_path_txt = sub_path.replace(".json", ".txt")
-                sub_path_metadata = sub_path.replace(".json", ".metadata.json")
+                sub_path_metadata = sub_path.replace(".json", ".txt.metadata.json")
 
                 # Build destination keys
-                dest_txt_key = f"{date_prefix_dir}/original/{sub_path_txt}"
-                dest_metadata_key = f"{date_prefix_dir}/original/{sub_path_metadata}"
+                dest_txt_key = f"{date_prefix_dir}/{sub_path_txt}"
+                dest_metadata_key = f"{date_prefix_dir}/{sub_path_metadata}"
 
                 # Upload text file
                 s3.put_object(
@@ -167,13 +225,15 @@ def copy_json_files_from_s3(date_prefix):
 
                 # Build and upload metadata JSON
                 metadata_obj = {
-                    "title": title,
-                    "topic": topic,
-                    "publishedAt": published_at,
-                    "unix_time": unix_time,
-                    "summary": 'no',
-                    "persons": persons_metadata,
-                    "organizations": orgs_metadata
+                    "metadataAttributes": {
+                        "title": title,
+                        "topic": topic,
+                        "publishedAt": published_at,
+                        "unix_time": unix_time,
+                        "summary": 'no',
+                        "persons": persons_metadata,
+                        "organizations": orgs_metadata
+                    }
                 }
 
                 s3.put_object(
@@ -359,7 +419,11 @@ source_bucket = os.environ.get("S3_SOURCE")
 dest_bucket = os.environ.get("S3_DESTINATION")
 endpoint_name = os.environ.get("SAGE_TS_ENDPOINT")
 
+summarize_and_copy('2025-08-01')
 summarize_and_copy('2025-08-02')
+summarize_and_copy('2025-08-03')
+summarize_and_copy('2025-08-04')
+#summarize_and_copy('2025-08-04')
 
 # summarize_and_copy('2025-09-01')
 # summarize_and_copy('2025-09-03')

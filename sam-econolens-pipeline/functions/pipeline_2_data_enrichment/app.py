@@ -14,6 +14,8 @@ import json
 from datetime import datetime, timedelta
 import os
 from os.path import join, dirname
+import re
+import unicodedata
 
 # -------------------------------
 # Helpers functions
@@ -25,11 +27,46 @@ nlp = spacy.load('en_core_web_sm')
 print("spacy.load('en_core_web_sm') complete ")
 stop_words = nlp.Defaults.stop_words  # spaCy's built-in stopwords set
 
-def remove_non_ascii_encode_decode(text):
+# def remove_non_ascii_encode_decode(text):
+#     """
+#     Remove non ascii characters from a string. Cleans text in articles before extraction, and ingestion into bedrock knowledge base
+#     """
+#     return text.encode('ascii', 'ignore').decode('ascii')
+
+def clean_text_for_ingestion(text: str) -> str:
     """
-    Remove non ascii characters from a string. Cleans text in articles before extraction, and ingestion into bedrock knowledge base
+    Steps:
+      1. Normalize Unicode characters (smart quotes, accented chars)
+      2. Remove non-printable control characters
+      3. Replace escape sequences with spaces
+      4. Normalize whitespace and newlines
+      5. Strip leading/trailing spaces
     """
-    return text.encode('ascii', 'ignore').decode('ascii')
+    if not isinstance(text, str):
+        text = str(text)
+
+    # 1️⃣ Normalize Unicode (e.g., smart quotes → normal quotes)
+    text = unicodedata.normalize("NFKC", text)
+
+    # 2️⃣ Remove control characters (ASCII 0–31, except \n and \t)
+    text = re.sub(r"[\x00-\x09\x0B\x0C\x0E-\x1F\x7F-\x9F]", " ", text)
+
+    # 3️⃣ Replace visible escape sequences (\n, \t, etc.) with spaces
+    text = re.sub(
+        r"\\[abfnrtv'\"\\]|\\x[0-9A-Fa-f]{2}|\\u[0-9A-Fa-f]{4}|\\U[0-9A-Fa-f]{8}",
+        " ",
+        text,
+    )
+
+    # 4️⃣ Normalize whitespace (collapse multiple spaces or newlines)
+    text = re.sub(r"[ \t]+", " ", text)     # collapse spaces/tabs
+    text = re.sub(r"\s*\n\s*", "\n", text)  # tidy up newlines
+    text = re.sub(r"\n{3,}", "\n\n", text)  # limit multiple blank lines
+
+    # 5️⃣ Strip leading/trailing whitespace
+    text = text.strip()
+
+    return text
 
 def clean(phrase):
         # Use spaCy tokenization and filter stopwords
@@ -93,8 +130,8 @@ def copy_json_files_from_s3(date_prefix):
                 response = s3.get_object(Bucket=source_bucket, Key=key)
                 data = json.loads(response["Body"].read().decode("utf-8"))
 
-                # Extract fields
-                content = remove_non_ascii_encode_decode(data.get("content"))
+                # Extract fields and clean data
+                content = clean_text_for_ingestion(data.get("content"))
                 persons_metadata, orgs_metadata = extract_persons_and_orgs(content)
                 published_at = data.get("publishedAt")
                 topic = data.get("topic")
@@ -130,13 +167,15 @@ def copy_json_files_from_s3(date_prefix):
 
                 # Build and upload metadata JSON
                 metadata_obj = {
-                    "title": title,
-                    "topic": topic,
-                    "publishedAt": published_at,
-                    "unix_time": unix_time,
-                    "summary": 'no',
-                    "persons": persons_metadata,
-                    "organizations": orgs_metadata
+                    "metadataAttributes": {
+                        "title": title,
+                        "topic": topic,
+                        "publishedAt": published_at,
+                        "unix_time": unix_time,
+                        "summary": 'no',
+                        "persons": persons_metadata,
+                        "organizations": orgs_metadata
+                    }
                 }
 
                 s3.put_object(
