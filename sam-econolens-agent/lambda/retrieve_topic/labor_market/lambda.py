@@ -2,7 +2,7 @@ import boto3
 from datetime import datetime, timedelta
 import json
 
-kb_id = "QPJDJ2SLQT"
+kb_id = "PD0J7Z5JPD"
 
 def date_to_unix(date_str:str, is_end:bool=False) -> int:
     """
@@ -34,27 +34,29 @@ def days_difference(start_date_str, end_date_str) -> int:
     return number_of_days + 1
 
 
-def query_topic(start_date_str, end_date_str, topic, query, chunks_per_day=5):
+def query_topic_labor_market(start_date_str, end_date_str, query, chunks_per_day=5):
     """
     Query data based on prompt and metadata filters
     Rerank data
 
     Roughly 5 chunks per day per topic. chunks are about ... tokens.
     """
+    print('unix start and end')
     start_unixtime = date_to_unix(date_str=start_date_str)
     end_unixtime = date_to_unix(date_str=end_date_str, is_end=True)
     
-    assert topic in ["consumer_behavior",
-                     "corporate",
-                     "economy_general",
-                     "economy_long_term",
-                     "government_and_policy",
-                     "inflation",
-                     "labor_market"]
+    # assert topic in ["consumer_behavior",
+    #                  "corporate",
+    #                  "economy_general",
+    #                  "economy_long_term",
+    #                  "government_and_policy",
+    #                  "inflation",
+    #                  "labor_market"]
 
     day_diff = days_difference(start_date_str, end_date_str)
-    n_chunks = day_diff * chunks_per_day
-    n_chunks_return = min(n_chunks, 50) # max 50 chunks returned
+    # max numberOfResults allowed is 100 chunks
+    n_chunks = 2 #min(day_diff * chunks_per_day, 100)
+    n_chunks_return = 2 #min(n_chunks, 50) # 50 chunks returned
 
     bedrock_agent_runtime = boto3.client('bedrock-agent-runtime')
 
@@ -88,7 +90,7 @@ def query_topic(start_date_str, end_date_str, topic, query, chunks_per_day=5):
                         {
                             'stringContains': {
                                 'key': 'topic',
-                                'value': topic
+                                'value': "labor_market"
                             }
                         },
                         # # Keyword filters
@@ -122,13 +124,12 @@ def query_topic(start_date_str, end_date_str, topic, query, chunks_per_day=5):
         }
     )
 #    print(response)
-    payload = {'topic':topic,
-                'chunks': n_chunks_return,
+    payload = {'topic':"labor_market",
+               'chunks': n_chunks_return,
                'context':[]}
     
     for i in response['retrievalResults']:
         payload['context'].append(i['content']['text'])
-
 
     #print(payload)
     return payload
@@ -137,19 +138,19 @@ def lambda_handler(event, context):
     """
     
     """
-    topic_to_query = {'labor_market': 'Events about labor markets, employment, unemployment and their effects on the economy'}
+    
 
     params = event.get('parameters')
+    print("input parameters:")
     print(params)
-    abc
-    start_date_str = event.get('start_date_str')
-    end_date_str = event.get('end_date_str')
-    topic = event.get('topic')
 
-    payload = query_topic(event['start_date_str'],
-                          event['end_date_str'],
-                          event['topic'],
-                          topic_to_query[event['topic']])
+    start_date_str = next(d['value'] for d in params if d['name'] == 'start_date_str')
+    end_date_str = next(d['value'] for d in params if d['name'] == 'end_date_str')
+    
+    query = 'Events about labor markets, employment, unemployment and their effects on the economy'
+    payload = query_topic_labor_market(start_date_str,
+                                       end_date_str,
+                                       query)
     
     agent = event['agent']
     actionGroup = event['actionGroup']
@@ -158,7 +159,7 @@ def lambda_handler(event, context):
 
     response_body = {
         'TEXT': {
-            'body': payload
+            'body': json.dumps(payload)##{"context":["The unemployment rate is at 10%"]}
         }
     }
 
@@ -179,5 +180,11 @@ def lambda_handler(event, context):
         'sessionAttributes': session_attributes,
         'promptSessionAttributes': prompt_session_attributes
     }
-
+    print('Returning the following: ')
+    print(action_response)
     return action_response
+
+print(query_topic_labor_market("2025-08-01",
+                            "2025-08-02",
+                            'Events about labor markets, employment, unemployment and their effects on the economy'
+                            ))

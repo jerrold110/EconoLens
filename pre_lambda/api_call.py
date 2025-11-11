@@ -33,7 +33,7 @@ def get_gnews_api_key():
         raise e
 
     secret = json.loads(get_secret_value_response['SecretString'])
-    return secret['GNEWS_API_KEY'] # GNEWS_API_KEY is the key of the secret
+    return "be770fced2dfa965265320344c385855"#secret['GNEWS_API_KEY'] # GNEWS_API_KEY is the key of the secret
 
 def store_article(folder_name, article, topic, s3_client):
 
@@ -144,35 +144,15 @@ def process_date(start_date_str:str):
 dotenv_path = join(dirname(__file__), '.env')
 load_dotenv(dotenv_path)
 
-process_date('2025-08-01')
-#process_date('2025-08-01')
-# process_date('2025-08-02')
-# process_date('2025-08-03')
-# process_date('2025-08-04')
-# process_date('2025-08-05')
-# process_date('2025-08-06')
-# process_date('2025-08-07')
-# process_date('2025-08-08')
-# process_date('2025-08-09')
-# process_date('2025-08-10')
-# process_date('2025-08-11')
-# process_date('2025-08-12')
-# process_date('2025-08-13')
-# process_date('2025-08-14')
-# process_date('2025-08-15')
-# process_date('2025-08-16')
-# process_date('2025-08-17')
-# process_date('2025-08-18')
-# process_date('2025-08-19')
-# process_date('2025-08-20')
-# process_date('2025-08-21')
-# process_date('2025-08-22')
-# process_date('2025-08-23')
-# process_date('2025-08-24')
-# process_date('2025-08-25')
-# process_date('2025-08-26')
-# process_date('2025-08-27')
-# process_date('2025-08-28')
-# process_date('2025-08-29')
-# process_date('2025-08-30')
-#print(get_gnews_api_key())
+
+from datetime import datetime, timedelta
+
+start_date = datetime.strptime('2025-07-01', '%Y-%m-%d')
+end_date = datetime.strptime('2025-07-31', '%Y-%m-%d')
+
+current_date = start_date
+while current_date <= end_date:
+    process_date(current_date.strftime('%Y-%m-%d'))
+    current_date += timedelta(days=1)
+
+
