@@ -1,5 +1,3 @@
-(date_1, date_2, topic)
-
-(date_1, date_2, ent_per, ent_org)
-
-(date_1, date_2, topic, ent_per, ent_org)
+topic
+entity
+free search

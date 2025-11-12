@@ -1,8 +1,9 @@
 import boto3
 from datetime import datetime, timedelta
 import json
+import os
 
-kb_id = "PD0J7Z5JPD"
+kb_id = os.environ.get("BEDROCK_KNOWLEDGE_BASE")
 
 def date_to_unix(date_str:str, is_end:bool=False) -> int:
     """
@@ -34,7 +35,7 @@ def days_difference(start_date_str, end_date_str) -> int:
     return number_of_days + 1
 
 
-def query_topic_labor_market(start_date_str, end_date_str, query, chunks_per_day=5):
+def query_topic_corporate(start_date_str, end_date_str, query, chunks_per_day=5):
     """
     Query data based on prompt and metadata filters
     Rerank data
@@ -90,7 +91,7 @@ def query_topic_labor_market(start_date_str, end_date_str, query, chunks_per_day
                         {
                             'stringContains': {
                                 'key': 'topic',
-                                'value': "labor_market"
+                                'value': "corporate"
                             }
                         },
                         # # Keyword filters
@@ -147,11 +148,11 @@ def lambda_handler(event, context):
     start_date_str = next(d['value'] for d in params if d['name'] == 'start_date_str')
     end_date_str = next(d['value'] for d in params if d['name'] == 'end_date_str')
     
-    query = 'Events about labor markets, employment, unemployment and their effects on the economy'
-    payload = query_topic_labor_market(start_date_str,
+    query = 'Mergers, acquisitions, earnings, corporate events, layoffs'
+    payload = query_topic_corporate(start_date_str,
                                        end_date_str,
                                        query)
-    
+    print(payload)
     agent = event['agent']
     actionGroup = event['actionGroup']
     function = event['function']
@@ -184,7 +185,8 @@ def lambda_handler(event, context):
     print(action_response)
     return action_response
 
-print(query_topic_labor_market("2025-08-01",
-                            "2025-08-02",
-                            'Events about labor markets, employment, unemployment and their effects on the economy'
-                            ))
+
+# print(query_topic_corporate("2025-08-01",
+#                             "2025-08-02",
+#                             'Mergers, acquisitions, earnings, corporate events, layoffs'
+#                             ))
