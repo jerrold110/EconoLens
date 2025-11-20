@@ -2,8 +2,43 @@ import boto3
 from datetime import datetime, timedelta
 import json
 import os
+import random, time
+from botocore.exceptions import ClientError
 
-kb_id = os.environ.get("BEDROCK_KNOWLEDGE_BASE")
+kb_id = os.environ.get("BEDROCK_KNOWLEDGE_BASE_ID")
+day_chunk = int(os.environ.get("RETRIEVE_CHUNK_PER_DAY_COUNT"))
+rerank_chunk_return = int(os.environ.get("RERANK_CHUNK_COUNT"))
+query = 'Everything related to corporate news including mergers, acquisitions, earnings, layoffs, and finance'
+
+def with_backoff(func):
+    """
+    Decorator that retries a function with random backoff when a ThrottlingException (or other retryable error) occurs.
+    """
+    def wrapper(*args, **kwargs):
+        max_retries = 5
+        max_backoff = 10
+
+        for attempt in range(max_retries):
+            try:
+                # Call the wrapped function
+                sleep = random.uniform(0, max_backoff)
+                print(f"Initial call. Sleeping {sleep:.2f}s")
+                return func(*args, **kwargs)
+
+            except ClientError as e:
+                code = e.response["Error"]["Code"]
+
+                # Only retry on throttling
+                if code != "ThrottlingException":
+                    raise
+
+                # Compute backoff 
+                sleep = random.uniform(1, max_backoff)
+                print(f"[retry {attempt+1}] Throttled. Sleeping {sleep:.2f}s")
+                time.sleep(sleep)
+
+        raise RuntimeError("Exceeded retry limit due to ThrottlingException")
+    return wrapper
 
 def date_to_unix(date_str:str, is_end:bool=False) -> int:
     """
@@ -34,15 +69,14 @@ def days_difference(start_date_str, end_date_str) -> int:
 
     return number_of_days + 1
 
-
-def query_topic_corporate(start_date_str, end_date_str, query, chunks_per_day=5):
+@with_backoff
+def query_topic_corporate(start_date_str, end_date_str, query, chunks_per_day=day_chunk):
     """
     Query data based on prompt and metadata filters
     Rerank data
 
     Roughly 5 chunks per day per topic. chunks are about ... tokens.
     """
-    print('unix start and end')
     start_unixtime = date_to_unix(date_str=start_date_str)
     end_unixtime = date_to_unix(date_str=end_date_str, is_end=True)
     
@@ -56,8 +90,9 @@ def query_topic_corporate(start_date_str, end_date_str, query, chunks_per_day=5)
 
     day_diff = days_difference(start_date_str, end_date_str)
     # max numberOfResults allowed is 100 chunks
-    n_chunks = 2 #min(day_diff * chunks_per_day, 100)
-    n_chunks_return = 2 #min(n_chunks, 50) # 50 chunks returned
+    # max numberOfResults allowed is 100 chunks
+    n_chunks_retrieve = min(day_diff * chunks_per_day, 100)
+    n_chunks_return = min(rerank_chunk_return, 100) # 50 chunks returned
 
     bedrock_agent_runtime = boto3.client('bedrock-agent-runtime')
 
@@ -70,7 +105,7 @@ def query_topic_corporate(start_date_str, end_date_str, query, chunks_per_day=5)
         },
         retrievalConfiguration={
             'vectorSearchConfiguration': {
-                'numberOfResults': n_chunks,
+                'numberOfResults': n_chunks_retrieve,
                 'overrideSearchType': 'HYBRID',
                 'filter': {
                     'andAll': [
@@ -142,17 +177,17 @@ def lambda_handler(event, context):
     
 
     params = event.get('parameters')
-    print("input parameters:")
+    print("Event:")
+    print(event)
+    print("Input parameters:")
     print(params)
 
     start_date_str = next(d['value'] for d in params if d['name'] == 'start_date_str')
     end_date_str = next(d['value'] for d in params if d['name'] == 'end_date_str')
-    
-    query = 'Mergers, acquisitions, earnings, corporate events, layoffs'
+
     payload = query_topic_corporate(start_date_str,
                                        end_date_str,
                                        query)
-    print(payload)
     agent = event['agent']
     actionGroup = event['actionGroup']
     function = event['function']

@@ -1,0 +1,7 @@
+boto3 must be 1.40.50, lower versions cause errors with the lambda code
+- reranking does not work
+
+
+
+        
+        

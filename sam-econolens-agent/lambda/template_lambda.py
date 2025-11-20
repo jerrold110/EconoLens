@@ -52,13 +52,14 @@ def query_date_topic(start_date_str, end_date_str, topic, chunks_per_day=4):
 
     day_diff = days_difference(start_date_str, end_date_str)
     n_chunks = day_diff * chunks_per_day
+    n_chunks = 80
 
     bedrock_agent_runtime = boto3.client('bedrock-agent-runtime')
 
     # https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/bedrock-agent-runtime/client/retrieve.html#
     # https://docs.aws.amazon.com/bedrock/latest/userguide/kb-test-config.html
     response = bedrock_agent_runtime.retrieve(
-        knowledgeBaseId='LWVHC1VCWF',
+        knowledgeBaseId=kb_id,
         retrievalQuery={
             'text': 'economy'
         },
@@ -108,6 +109,7 @@ def query_date_topic(start_date_str, end_date_str, topic, chunks_per_day=4):
                 'rerankingConfiguration': {
                     'type': 'BEDROCK_RERANKING_MODEL',
                     'bedrockRerankingConfiguration': {
+                        'numberOfRerankedResults': 80,
                         'modelConfiguration': {
                             'modelArn': 'arn:aws:bedrock:us-east-1::foundation-model/cohere.rerank-v3-5:0',
                         },
@@ -124,6 +126,7 @@ def query_date_topic(start_date_str, end_date_str, topic, chunks_per_day=4):
 sd = '2025-08-01'
 ed = '2025-08-02'
 topic = 'corporate'
+kb_id = "UV3UZXGEGZ"
 query_date_topic(sd, ed, topic)
 
 def lambda_handler(event, context):

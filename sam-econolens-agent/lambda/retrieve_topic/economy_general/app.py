@@ -8,7 +8,7 @@ from botocore.exceptions import ClientError
 kb_id = os.environ.get("BEDROCK_KNOWLEDGE_BASE_ID")
 day_chunk = int(os.environ.get("RETRIEVE_CHUNK_PER_DAY_COUNT"))
 rerank_chunk_return = int(os.environ.get("RERANK_CHUNK_COUNT"))
-query = 'News related to labor markets, employment, unemployment and their effects on the economy'
+query = 'General economic reports and happenings such as growth, slowdown, recession, or a downturn'
 
 def with_backoff(func):
     """
@@ -70,14 +70,13 @@ def days_difference(start_date_str, end_date_str) -> int:
     return number_of_days + 1
 
 @with_backoff
-def query_topic_labor_market(start_date_str, end_date_str, query, chunks_per_day=day_chunk):
+def query_topic_eg(start_date_str, end_date_str, query, chunks_per_day=day_chunk):
     """
     Query data based on prompt and metadata filters
     Rerank data
 
     Roughly 5 chunks per day per topic. chunks are about ... tokens.
     """
-    print('unix start and end')
     start_unixtime = date_to_unix(date_str=start_date_str)
     end_unixtime = date_to_unix(date_str=end_date_str, is_end=True)
     
@@ -91,8 +90,8 @@ def query_topic_labor_market(start_date_str, end_date_str, query, chunks_per_day
 
     day_diff = days_difference(start_date_str, end_date_str)
     # max numberOfResults allowed is 100 chunks
-    n_chunks_retrieve = min(day_diff * chunks_per_day, 100)
-    n_chunks_return = min(rerank_chunk_return, 100) # 50 chunks returned
+    n_chunks = 2 #min(day_diff * chunks_per_day, 100)
+    n_chunks_return = 2 #min(n_chunks, 50) # 50 chunks returned
 
     bedrock_agent_runtime = boto3.client('bedrock-agent-runtime')
 
@@ -105,7 +104,7 @@ def query_topic_labor_market(start_date_str, end_date_str, query, chunks_per_day
         },
         retrievalConfiguration={
             'vectorSearchConfiguration': {
-                'numberOfResults': n_chunks_retrieve,
+                'numberOfResults': n_chunks,
                 'overrideSearchType': 'HYBRID',
                 'filter': {
                     'andAll': [
@@ -126,7 +125,7 @@ def query_topic_labor_market(start_date_str, end_date_str, query, chunks_per_day
                         {
                             'stringContains': {
                                 'key': 'topic',
-                                'value': "labor_market"
+                                'value': "economy_general"
                             }
                         },
                         # # Keyword filters
@@ -177,16 +176,18 @@ def lambda_handler(event, context):
     
 
     params = event.get('parameters')
-    print("input parameters:")
+    print("Event:")
+    print(event)
+    print("Input parameters:")
     print(params)
 
     start_date_str = next(d['value'] for d in params if d['name'] == 'start_date_str')
     end_date_str = next(d['value'] for d in params if d['name'] == 'end_date_str')
     
-    payload = query_topic_labor_market(start_date_str,
+    payload = query_topic_eg(start_date_str,
                                        end_date_str,
                                        query)
-    
+
     agent = event['agent']
     actionGroup = event['actionGroup']
     function = event['function']
@@ -219,7 +220,8 @@ def lambda_handler(event, context):
     print(action_response)
     return action_response
 
-# print(query_topic_labor_market("2025-08-01",
+
+# print(query_topic_corporate("2025-08-01",
 #                             "2025-08-02",
-#                             'Events about labor markets, employment, unemployment and their effects on the economy'
+#                             'Mergers, acquisitions, earnings, corporate events, layoffs'
 #                             ))

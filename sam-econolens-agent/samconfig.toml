@@ -18,7 +18,6 @@ capabilities = "CAPABILITY_IAM"
 confirm_changeset = true
 resolve_s3 = true
 s3_prefix = "sam-econolens-agent"
-region = "us-east-1"
 parameter_overrides = "AgentName=\"EconolensAgent\" FoundationModelId=\"amazon.nova-lite-v1:0\""
 image_repositories = []
 

@@ -17,17 +17,19 @@ Parameters:
 Globals:
   Function:
     Timeout: 300 # seconds
-    MemorySize: 256 # MB
+    MemorySize: 512 # MB
     Tracing: Active
     Runtime: python3.11
     Architectures:
       - x86_64
     Environment:
       Variables:
-        BEDROCK_KNOWLEDGE_BASE_ID: A1233
+        BEDROCK_KNOWLEDGE_BASE_ID: OSQDQFVW3C # Bedrock KB ID, switches every time I restart the KB
+        RETRIEVE_CHUNK_PER_DAY_COUNT: 2
+        RERANK_CHUNK_COUNT: 2
         POWERTOOLS_METRICS_NAMESPACE: bedrock-agent-demo
         POWERTOOLS_SERVICE_NAME: bedrock-agent-demo
-
+# https://repost.aws/questions/QUwyrhlEugTH-DV_dH5lG3Ag/issue-with-bedrock-agents-and-lambda-function-model-timeout-error
 Resources:
    # --- BEDROCK AGENT ---
   BedrockAgent:
@@ -38,20 +40,26 @@ Resources:
       Description: "Agent for economic reporting and question answering. Required: Time-period dates (inclusive). Optional: Topic, entity keyword"
       FoundationModel: !Ref FoundationModelId
       Instruction: |
-        You are an economic analyst that generates economic reports or answers specific questions about economic events and their effect on the economy.  You have access to a bedrock knowledge base that has up-to-date data until the present day, so you do not need to be trained with the data. These time periods can be as small as one day (the start and end date are the same), or as long as one year. 
+        You are an economic analyst that generates economic reports or answers specific questions about economic events and their effect on the economy. You have access to a knowledge base that has up-to-date data until the present day, so you do not need to be trained with the data you will use to augment your response. 
 
-        Every request requires the user to specify a time-period over which economic events took place but the user does not have to explicitly state so, the start and end date are inclusive. For example, if the user says "Give me the economic report for the month of December in the year 2000" , the time-period is the whole month of December in the year 2020, enter 2020-12-01 as start_date_str and 2025-12-31 and end_date_str.
+        Every request requires the user to specify a time-period over which economic events took place but the user does not have to explicitly state so, the start and end date are inclusive. For example, if the user says "Give me the economic report for the month of December in the year 2000" , the time-period is the whole month of December in the year 2020, enter 2020-12-01 as start_date_str and 2025-12-31 and end_date_str. These time periods can be as small as one day (the start and end date are the same), or as long as one year. 
 
         You have access to the following tools:
-        getTopicCorporate: this is used for retrieving data on corporate topics
-        getTopicLaborMarket: this is used for retrieving data on corporate topics
+        GetTopicConsumerBehavior: this is used for retrieving information on consumer behavior topics
+        GetTopicCorporate: this is used for retrieving information on corporate topics
+        GetTopicEconomyGeneral: this is used for retrieving information on the general economy
+        GetTopicEconomyLongTerm: this is used for retrieving information on long-term economic indicators
+        GetTopicGovermentAndPolicy: this is used for retrieving information on the government and their policies
+        GetTopicInflation: this is used for retrieving information on inflation
+        GetTopicLaborMarket: this is used for retrieving information on labor market topics
 
         These are the instructions for the tasks you can perform:
         1. REPORT GENERATION: When asked to generate a report or provide a comprehensive overview:
           - Extract the time-period and extract start_date_str and end_date_str parameters from the prompt. Prompt the user if a time-period is not specified
-          - Get data for each of following economic topics: corporate, labor market
-          - Summarise the retrieve data and generate a well-structured report with one paragraph per topic capturing the main points without irrelevant details
-          - Place a title on each paragraph consisting of the topic
+          - Get data for each of following economic topics: consumer behavior, corporate, economy general, economy long term, goverment and policy, inflation, labor market
+          - Summarise the retrieve data and generate a well-structured report with one paragraph per topic capturing the main points without irrelevant details, finally include a paragraph summarising the report
+          - Place a title above each paragraph consisting of its topic in bold letters
+          - The main title of the report is "Economic report for ...", where ... is the time period for which the report covers in bold letters
 
         2. QUESTION ANSWERING: When asked a specific question:
           - Extract the time-period and extract start_date_str and end_date_str parameters from the prompt. Prompt the user if a time-period is not specified
@@ -59,15 +67,37 @@ Resources:
           - Call get_topic_corporate if the question is related to an economic topic (ie: inflation, labor_market, economy_long_term)
           - Provide a direct, concise answer based on the retrieved data containing the main points
 
-        Always think step-by-step:
+        Always follow these instructions step-by-step:
         - First, determine if this is a report generation request or a specific question 
         - At each stage, state the function you are going to call and the parameters you will pass
-        - Then, call the appropriate function(s)
-        - Finally, format your response appropriately
+        - Then call the appropriate function(s)
+        - List the exact pieces of retrieved context that are relevant to the question. If none are relevant, say "No relevant evidence found."
+        - Finally, using ONLY the evidence from the previous step format your response appropriately
       ########################################################################################################################
       ActionGroups:
+      # Do not leave descriptions blank even though they are optional
+      # https://repost.aws/questions/QUlKF9KRQnTGuO5AUplpeBMQ/how-does-a-bedrock-agent-understand-a-tool-s-function-without-a-description-in-the-function-schema
+        - ActionGroupName: GetTopicConsumerBehavior
+          Description: "Use this tool to get information on consumer behavior topics"
+          ActionGroupExecutor:
+            Lambda: !GetAtt RetrieveTopicConsumerBehavior.Arn
+          ActionGroupState: ENABLED
+          FunctionSchema:
+            Functions:
+              - Name: GetInformation
+                Description: |
+                  Get information on consumer behavior topics
+                Parameters:
+                  end_date_str:
+                    Description: "The end date of the time-period"
+                    Required: True
+                    Type: string
+                  start_date_str:
+                    Description: "The end date of the time-period"
+                    Required: True
+                    Type: string
         - ActionGroupName: GetTopicCorporate
-          Description: "Use this tool to get information on corporate topics"
+          Description: "Use this tool to get information on corporate events and news topics"
           ActionGroupExecutor:
             Lambda: !GetAtt RetrieveTopicCorporate.Arn
           ActionGroupState: ENABLED
@@ -75,7 +105,83 @@ Resources:
             Functions:
               - Name: GetInformation
                 Description: |
-                  Get information on corporate topics
+                  Get information on corporate events and news topics
+                Parameters:
+                  end_date_str:
+                    Description: "The end date of the time-period"
+                    Required: True
+                    Type: string
+                  start_date_str:
+                    Description: "The end date of the time-period"
+                    Required: True
+                    Type: string
+        - ActionGroupName: GetTopicEconomyGeneral
+          Description: "Use this tool to get information on the general economy"
+          ActionGroupExecutor:
+            Lambda: !GetAtt RetrieveTopicEconomyGeneral.Arn
+          ActionGroupState: ENABLED
+          FunctionSchema:
+            Functions:
+              - Name: GetInformation
+                Description: |
+                  Get information on the general economy
+                Parameters:
+                  end_date_str:
+                    Description: "The end date of the time-period"
+                    Required: True
+                    Type: string
+                  start_date_str:
+                    Description: "The end date of the time-period"
+                    Required: True
+                    Type: string
+        - ActionGroupName: GetTopicEconomyLongTerm
+          Description: "Use this tool to get information on long-term economic indicators"
+          ActionGroupExecutor:
+            Lambda: !GetAtt RetrieveTopicEconomyLongTerm.Arn
+          ActionGroupState: ENABLED
+          FunctionSchema:
+            Functions:
+              - Name: GetInformation
+                Description: |
+                  Get information on long-term economic indicators
+                Parameters:
+                  end_date_str:
+                    Description: "The end date of the time-period"
+                    Required: True
+                    Type: string
+                  start_date_str:
+                    Description: "The end date of the time-period"
+                    Required: True
+                    Type: string
+        - ActionGroupName: GetTopicGovermentAndPolicy
+          Description: "Use this tool to get information on the government and their policies"
+          ActionGroupExecutor:
+            Lambda: !GetAtt RetrieveTopicGovernmentAndPolicy.Arn
+          ActionGroupState: ENABLED
+          FunctionSchema:
+            Functions:
+              - Name: GetInformation
+                Description: |
+                  Get information on the government and their policies
+                Parameters:
+                  end_date_str:
+                    Description: "The end date of the time-period"
+                    Required: True
+                    Type: string
+                  start_date_str:
+                    Description: "The end date of the time-period"
+                    Required: True
+                    Type: string
+        - ActionGroupName: GetTopicInflation
+          Description: "Use this tool to get information on inflation"
+          ActionGroupExecutor:
+            Lambda: !GetAtt RetrieveTopicInflation.Arn
+          ActionGroupState: ENABLED
+          FunctionSchema:
+            Functions:
+              - Name: GetInformation
+                Description: |
+                  Get information on inflation
                 Parameters:
                   end_date_str:
                     Description: "The end date of the time-period"
@@ -94,7 +200,7 @@ Resources:
             Functions:
               - Name: GetInformation
                 Description: |
-                  Get information on corporate topics
+                  Get information on labor market topics
                 Parameters:
                   end_date_str:
                     Description: "The end date of the time-period"
@@ -105,11 +211,31 @@ Resources:
                     Required: True
                     Type: string
 
-  # --- LAMBDA FUNCTIONS AND RB POLICIES---
-  # To prevent circular reference when we need agent reference, use "arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:agent/${AgentName}"
-  # Instead of the ARN -> !GetAtt BedrockAgent.AgentArn that is generated after deployment
-  # The above is false
-  # RB policies state who can invoke the lambda
+  # --- LAMBDA FUNCTIONS AND RESOURCE BASED POLICIES---
+  # We explored "arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:agent/${AgentName}"
+  # Instead of the ARN -> !GetAtt BedrockAgent.AgentArn
+  # AWS::Lambda::Permission resource grants an AWS service or another account permission to use a function https://docs.aws.amazon.com/AWSCloudFormation/latest/TemplateReference/aws-resource-lambda-permission.html
+  # We are not using layers in these lambda functions
+  
+
+  RetrieveTopicConsumerBehavior:
+    Type: AWS::Serverless::Function
+    Properties:
+      Role: !GetAtt AgentFunctionsRole.Arn
+      CodeUri: lambda/retrieve_topic/consumer_behavior/
+      Handler: app.lambda_handler
+      PackageType: Zip
+      # Layers:
+      #   - !Ref ModelLayer
+  AgentFunctionsForRetrieveTopicCBRoleBedrock:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref RetrieveTopicConsumerBehavior
+      Action: lambda:InvokeFunction
+      Principal: bedrock.amazonaws.com
+      #SourceAccount: !Ref AWS::AccountId
+      SourceArn: !GetAtt BedrockAgent.AgentArn
+
   RetrieveTopicCorporate:
     Type: AWS::Serverless::Function
     Properties:
@@ -119,11 +245,82 @@ Resources:
       PackageType: Zip
       # Layers:
       #   - !Ref ModelLayer
-
   AgentFunctionsForRetrieveTopicCorporateRoleBedrock:
     Type: AWS::Lambda::Permission
     Properties:
       FunctionName: !Ref RetrieveTopicCorporate
+      Action: lambda:InvokeFunction
+      Principal: bedrock.amazonaws.com
+      #SourceAccount: !Ref AWS::AccountId
+      SourceArn: !GetAtt BedrockAgent.AgentArn
+
+  RetrieveTopicEconomyGeneral:
+    Type: AWS::Serverless::Function
+    Properties:
+      Role: !GetAtt AgentFunctionsRole.Arn
+      CodeUri: lambda/retrieve_topic/economy_general/
+      Handler: app.lambda_handler
+      PackageType: Zip
+      # Layers:
+      #   - !Ref ModelLayer
+  AgentFunctionsForRetrieveTopicEGBedrock:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref RetrieveTopicEconomyGeneral
+      Action: lambda:InvokeFunction
+      Principal: bedrock.amazonaws.com
+      #SourceAccount: !Ref AWS::AccountId
+      SourceArn: !GetAtt BedrockAgent.AgentArn
+  
+  RetrieveTopicEconomyLongTerm:
+    Type: AWS::Serverless::Function
+    Properties:
+      Role: !GetAtt AgentFunctionsRole.Arn
+      CodeUri: lambda/retrieve_topic/economy_long_term/
+      Handler: app.lambda_handler
+      PackageType: Zip
+      # Layers:
+      #   - !Ref ModelLayer
+  AgentFunctionsForRetrieveTopicELTBedrock:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref RetrieveTopicEconomyLongTerm
+      Action: lambda:InvokeFunction
+      Principal: bedrock.amazonaws.com
+      #SourceAccount: !Ref AWS::AccountId
+      SourceArn: !GetAtt BedrockAgent.AgentArn
+
+  RetrieveTopicGovernmentAndPolicy:
+    Type: AWS::Serverless::Function
+    Properties:
+      Role: !GetAtt AgentFunctionsRole.Arn
+      CodeUri: lambda/retrieve_topic/government_and_policy/
+      Handler: app.lambda_handler
+      PackageType: Zip
+      # Layers:
+      #   - !Ref ModelLayer
+  AgentFunctionsForRetrieveTopicGAPBedrock:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref RetrieveTopicGovernmentAndPolicy
+      Action: lambda:InvokeFunction
+      Principal: bedrock.amazonaws.com
+      #SourceAccount: !Ref AWS::AccountId
+      SourceArn: !GetAtt BedrockAgent.AgentArn
+
+  RetrieveTopicInflation:
+    Type: AWS::Serverless::Function
+    Properties:
+      Role: !GetAtt AgentFunctionsRole.Arn
+      CodeUri: lambda/retrieve_topic/inflation/
+      Handler: app.lambda_handler
+      PackageType: Zip
+      # Layers:
+      #   - !Ref ModelLayer
+  AgentFunctionsForRetrieveTopicInflationBedrock:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref RetrieveTopicInflation
       Action: lambda:InvokeFunction
       Principal: bedrock.amazonaws.com
       #SourceAccount: !Ref AWS::AccountId
@@ -138,7 +335,6 @@ Resources:
       PackageType: Zip
       # Layers:
       #   - !Ref ModelLayer
-
   AgentFunctionsForRetrieveTopLMRoleBedrock:
     Type: AWS::Lambda::Permission
     Properties:
@@ -181,7 +377,7 @@ Resources:
                 - bedrock.amazonaws.com
             Action: "sts:AssumeRole"
       Policies:
-        # Theoretically: This Res Pol allows bedrock to invoke the lambdas listed
+        # Theoretically: This Resource Policy allows bedrock to invoke the lambdas listed, not necessary, but more secure
         # Attach individual lambdas Arns
         - PolicyName: InvokeLambdaPolicy
           PolicyDocument:
@@ -192,7 +388,6 @@ Resources:
                   - lambda:InvokeFunction
                 Resource:
                 - !GetAtt RetrieveTopicCorporate.Arn
-                - !GetAtt RetrieveTopicLaborMarket.Arn
         - PolicyName: BedrockModelAccessPolicy
           PolicyDocument:
             Version: "2012-10-17"
@@ -234,8 +429,8 @@ Resources:
               #     - "bedrock:ApplyGuardrail"
               #     - "bedrock:ListGuardrails"
               #   Resource: !GetAtt BedrockAgent.AgentArn
-              
-        
+
+               
 
 # Outputs:
 #   # ServerlessRestApi is an implicit API created out of Events key under Serverless::Function

@@ -8,7 +8,7 @@ from botocore.exceptions import ClientError
 kb_id = os.environ.get("BEDROCK_KNOWLEDGE_BASE_ID")
 day_chunk = int(os.environ.get("RETRIEVE_CHUNK_PER_DAY_COUNT"))
 rerank_chunk_return = int(os.environ.get("RERANK_CHUNK_COUNT"))
-query = 'News related to labor markets, employment, unemployment and their effects on the economy'
+query = 'News related to consumers including retail, sales, spending and their effects on the economy'
 
 def with_backoff(func):
     """
@@ -70,14 +70,13 @@ def days_difference(start_date_str, end_date_str) -> int:
     return number_of_days + 1
 
 @with_backoff
-def query_topic_labor_market(start_date_str, end_date_str, query, chunks_per_day=day_chunk):
+def query_topic_cb(start_date_str, end_date_str, query, chunks_per_day=day_chunk):
     """
     Query data based on prompt and metadata filters
     Rerank data
 
     Roughly 5 chunks per day per topic. chunks are about ... tokens.
     """
-    print('unix start and end')
     start_unixtime = date_to_unix(date_str=start_date_str)
     end_unixtime = date_to_unix(date_str=end_date_str, is_end=True)
     
@@ -126,7 +125,7 @@ def query_topic_labor_market(start_date_str, end_date_str, query, chunks_per_day
                         {
                             'stringContains': {
                                 'key': 'topic',
-                                'value': "labor_market"
+                                'value': "consumer_behavior"
                             }
                         },
                         # # Keyword filters
@@ -177,16 +176,17 @@ def lambda_handler(event, context):
     
 
     params = event.get('parameters')
-    print("input parameters:")
+    print("Event:")
+    print(event)
+    print("Input parameters:")
     print(params)
 
     start_date_str = next(d['value'] for d in params if d['name'] == 'start_date_str')
     end_date_str = next(d['value'] for d in params if d['name'] == 'end_date_str')
-    
-    payload = query_topic_labor_market(start_date_str,
+
+    payload = query_topic_cb(start_date_str,
                                        end_date_str,
                                        query)
-    
     agent = event['agent']
     actionGroup = event['actionGroup']
     function = event['function']
@@ -219,7 +219,8 @@ def lambda_handler(event, context):
     print(action_response)
     return action_response
 
-# print(query_topic_labor_market("2025-08-01",
+
+# print(query_topic_corporate("2025-08-01",
 #                             "2025-08-02",
-#                             'Events about labor markets, employment, unemployment and their effects on the economy'
+#                             'Mergers, acquisitions, earnings, corporate events, layoffs'
 #                             ))
