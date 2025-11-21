@@ -35,3 +35,28 @@ Claude 3 Haiku
 
 Amazon Nova cannot have hyphens in action group
 https://repost.aws/questions/QUwyrhlEugTH-DV_dH5lG3Ag/issue-with-bedrock-agents-and-lambda-function-model-timeout-error
+
+
+You must base your final answer ONLY on the information retrieved from the tools.
+If the retrieved context does not contain enough information, you must respond:
+"I don’t know based on the retrieved information."
+
+Do NOT use prior knowledge. Do NOT guess or infer.
+Always cite which retrieved chunk(s) support your answer.
+
+List the exact pieces of retrieved context that are relevant to the question.
+If none are relevant, say “No relevant evidence found.”
+
+Write an answer using ONLY the evidence from step 1.
+If step 1 found no evidence, say:
+"I don’t know based on the retrieved information."
+
+
+If the retrieval function indicates `no_data = True`, 
+you MUST NOT guess or invent an answer. 
+Instead, respond with:
+
+"I'm sorry, but I don’t have enough information in the knowledge base to answer that."
+
+Never fabricate facts. Never assume missing details. 
+If information is unavailable, say so directly and concisely.

@@ -2,7 +2,7 @@ AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
 Description: >
   sam-econolens-agent
-  AI components of the Econolens project consisting of agent, action groups, lambdas, agent alias
+  AI components of the Econolens project consisting of agent, action groups, lambdas, guardrail, agent alias
 
 Parameters:
   AgentName:
@@ -11,8 +11,13 @@ Parameters:
     Description: Name for the Bedrock Agent
   FoundationModelId:
     Type: String
-    Default: amazon.nova-lite-v1:0 #anthropic.claude-3-5-sonnet-20240620-v1:0
+    # https://docs.aws.amazon.com/bedrock/latest/userguide/models-supported.html
+    Default: anthropic.claude-haiku-4-5-20251001-v1:0
     Description: Foundation model ID for the agent (Agent optimised Foundation models only)
+  AgentInstructions:
+    Type: String
+    Description: The instructions for the agent
+    Default: | 
 
 Globals:
   Function:
@@ -24,14 +29,14 @@ Globals:
       - x86_64
     Environment:
       Variables:
-        BEDROCK_KNOWLEDGE_BASE_ID: OSQDQFVW3C # Bedrock KB ID, switches every time I restart the KB
-        RETRIEVE_CHUNK_PER_DAY_COUNT: 2
-        RERANK_CHUNK_COUNT: 2
+        BEDROCK_KNOWLEDGE_BASE_ID: 7TJCJ0AADQ # Bedrock KB ID, switches every time I restart the KB
+        RETRIEVE_CHUNK_PER_DAY_COUNT: 5
+        RERANK_CHUNK_COUNT: 30
         POWERTOOLS_METRICS_NAMESPACE: bedrock-agent-demo
         POWERTOOLS_SERVICE_NAME: bedrock-agent-demo
 # https://repost.aws/questions/QUwyrhlEugTH-DV_dH5lG3Ag/issue-with-bedrock-agents-and-lambda-function-model-timeout-error
 Resources:
-   # --- BEDROCK AGENT ---
+  # --- BEDROCK AGENT ---
   BedrockAgent:
     Type: AWS::Bedrock::Agent
     Properties:
@@ -39,41 +44,53 @@ Resources:
       AgentResourceRoleArn: !GetAtt BedrockAgentExecutionRole.Arn
       Description: "Agent for economic reporting and question answering. Required: Time-period dates (inclusive). Optional: Topic, entity keyword"
       FoundationModel: !Ref FoundationModelId
+      # PromptOverrideConfiguration:
+      #   PromptConfigurations:
+      #     # https://docs.aws.amazon.com/AWSCloudFormation/latest/TemplateReference/aws-properties-bedrock-agent-promptconfiguration.html
+      #     # PRE_PROCESSING | ORCHESTRATION | POST_PROCESSING | ROUTING_CLASSIFIER | MEMORY_SUMMARIZATION | KNOWLEDGE_BASE_RESPONSE_GENERATION
+      #     # https://docs.aws.amazon.com/bedrock/latest/userguide/agents-how.html
+      #   - PromptType: POST_PROCESSING
+      #     PromptCreationMode: DEFAULT
+      #     # https://docs.aws.amazon.com/AWSCloudFormation/latest/TemplateReference/aws-properties-bedrock-agent-inferenceconfiguration.html
+      #     InferenceConfiguration:
+      #       MaximumLength: 4000 # 2048 default?
+      #       Temperature: 0.7
+      #       TopP: 0.8
       Instruction: |
-        You are an economic analyst that generates economic reports or answers specific questions about economic events and their effect on the economy. You have access to a knowledge base that has up-to-date data until the present day, so you do not need to be trained with the data you will use to augment your response. 
+        You are an economic analyst that generates economic reports or answers specific questions about economic events and their effect on the economy. You have access to a knowledge which you access through action group tools that has up-to-date data until the present day in the form of news articles, so you do not need to be trained with the data you will use to augment your response. You must answer ONLY using information retrieved from the action group tools. If the retrieved data does not contain any information, reply:  "I don't have enough information to answer that." Do NOT guess, infer, or invent details, do not use details from the previous response as facts to respond with.
 
-        Every request requires the user to specify a time-period over which economic events took place but the user does not have to explicitly state so, the start and end date are inclusive. For example, if the user says "Give me the economic report for the month of December in the year 2000" , the time-period is the whole month of December in the year 2020, enter 2020-12-01 as start_date_str and 2025-12-31 and end_date_str. These time periods can be as small as one day (the start and end date are the same), or as long as one year. 
-
-        You have access to the following tools:
-        GetTopicConsumerBehavior: this is used for retrieving information on consumer behavior topics
-        GetTopicCorporate: this is used for retrieving information on corporate topics
-        GetTopicEconomyGeneral: this is used for retrieving information on the general economy
-        GetTopicEconomyLongTerm: this is used for retrieving information on long-term economic indicators
-        GetTopicGovermentAndPolicy: this is used for retrieving information on the government and their policies
-        GetTopicInflation: this is used for retrieving information on inflation
-        GetTopicLaborMarket: this is used for retrieving information on labor market topics
+        Every request requires the user to specify a time-period over which economic events took place but the user does not have to explicitly state so, the start and end date are inclusive. For example, if the user says "Give me the economic report for December 2020" , the time-period is the whole month of December in the year 2020, enter 2020-12-01 as start_date_str and 2020-12-31 and end_date_str. These time periods can be as small as one day (the start and end date are the same), or as long as one year.
 
         These are the instructions for the tasks you can perform:
         1. REPORT GENERATION: When asked to generate a report or provide a comprehensive overview:
           - Extract the time-period and extract start_date_str and end_date_str parameters from the prompt. Prompt the user if a time-period is not specified
-          - Get data for each of following economic topics: consumer behavior, corporate, economy general, economy long term, goverment and policy, inflation, labor market
-          - Summarise the retrieve data and generate a well-structured report with one paragraph per topic capturing the main points without irrelevant details, finally include a paragraph summarising the report
+          - Get data for each of these topics and write a paragraph for  each one: consumer behavior, corporate, economy general, economy long term, goverment and policy, inflation, labor market
+          - Summarise the retrieved data and generate a report capturing the main points without irrelevant details if data is available, finally include a paragraph summarising the report
           - Place a title above each paragraph consisting of its topic in bold letters
           - The main title of the report is "Economic report for ...", where ... is the time period for which the report covers in bold letters
 
         2. QUESTION ANSWERING: When asked a specific question:
           - Extract the time-period and extract start_date_str and end_date_str parameters from the prompt. Prompt the user if a time-period is not specified
-          - Call get_topic_corporate if the question is related to an entity (ie: trump, powell, white house)
-          - Call get_topic_corporate if the question is related to an economic topic (ie: inflation, labor_market, economy_long_term)
+          - Use a tool that gets data for a certain entity if the question is related to an entity (ie: trump, powell, white house)
+          - Use a tool that gets data for a certain topic if the question is related to an economic topic (ie: inflation, labor_market, economy_long_term)
           - Provide a direct, concise answer based on the retrieved data containing the main points
 
+        You have access to the following tools:
+          GetTopicConsumerBehavior: this is used for retrieving information on consumer behavior topics
+          GetTopicCorporate: this is used for retrieving information on corporate topics
+          GetTopicEconomyGeneral: this is used for retrieving information on the general economy
+          GetTopicEconomyLongTerm: this is used for retrieving information on long-term economic indicators
+          GetTopicGovermentAndPolicy: this is used for retrieving information on the government and their policies
+          GetTopicInflation: this is used for retrieving information on inflation
+          GetTopicLaborMarket: this is used for retrieving information on labor market topics
+
         Always follow these instructions step-by-step:
-        - First, determine if this is a report generation request or a specific question 
+        - First, determine if this is a request for a report or to answer a specific question 
         - At each stage, state the function you are going to call and the parameters you will pass
         - Then call the appropriate function(s)
-        - List the exact pieces of retrieved context that are relevant to the question. If none are relevant, say "No relevant evidence found."
-        - Finally, using ONLY the evidence from the previous step format your response appropriately
-      ########################################################################################################################
+        - List the exact pieces of retrieved context that are relevant to the request. Determine if you have any retrieved context to provide a response.
+        - Finally, if you have evidence, even a little, using ONLY the retrieved context, format your response appropriately
+      # --- Action Groups ---
       ActionGroups:
       # Do not leave descriptions blank even though they are optional
       # https://repost.aws/questions/QUlKF9KRQnTGuO5AUplpeBMQ/how-does-a-bedrock-agent-understand-a-tool-s-function-without-a-description-in-the-function-schema
@@ -210,6 +227,25 @@ Resources:
                     Description: "The end date of the time-period"
                     Required: True
                     Type: string
+
+  # --- GUARDRAIL ---
+  AgentGuardrail:
+    Type: AWS::Bedrock::Guardrail
+    Properties:
+      Name: Econolens_guardrail
+      Description: Guardrails for contextual grounding check
+      BlockedInputMessaging: The input contains blocked content
+      BlockedOutputsMessaging: The system returned an invalid response
+      TopicPolicyConfig:
+        TopicsConfig:
+          - Name: BlockFinancialAdvice
+            Type: DENY
+            Definition: This policy blocks financial advice
+            Examples:
+              - You should invest now because shares because economic conditions look good 
+              - You should not invest in Amazon shares because investors are betting on AI
+
+      
 
   # --- LAMBDA FUNCTIONS AND RESOURCE BASED POLICIES---
   # We explored "arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:agent/${AgentName}"
@@ -409,7 +445,7 @@ Resources:
                   - "bedrock:ListAgentActionGroups"
                   - "bedrock:ListAgentKnowledgeBases"
                   - "bedrock:ListAgentAliases"
-                Resource: !Sub "arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:agent/${AgentName}"
+                Resource: !Sub "arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:agent/${AgentName}" # this has to be used instead of !GetAtt BedrockAgent.AgentArn
               - Effect: Allow
                 Action:
                   - "bedrock:InvokeModel"
@@ -423,12 +459,12 @@ Resources:
                   - "logs:CreateLogStream"
                   - "logs:PutLogEvents"
                 Resource: "*"
-              # - Effect: Allow
-              #   Action:
-              #     - "bedrock:GetGuardrail"
-              #     - "bedrock:ApplyGuardrail"
-              #     - "bedrock:ListGuardrails"
-              #   Resource: !GetAtt BedrockAgent.AgentArn
+              - Effect: Allow
+                Action:
+                  - "bedrock:GetGuardrail"
+                  - "bedrock:ApplyGuardrail"
+                  - "bedrock:ListGuardrails"
+                Resource: !Sub "arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:agent/${AgentName}" # this has to be used instead of !GetAtt BedrockAgent.AgentArn
 
                
 
