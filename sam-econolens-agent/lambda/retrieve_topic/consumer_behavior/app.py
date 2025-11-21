@@ -116,7 +116,7 @@ def query_topic_cb(start_date_str, end_date_str, query, chunks_per_day=day_chunk
                             }
                         },
                         {
-                            'lessThanOrEquals': {
+                            'lessThan': {
                                 'key': 'unix_time',
                                 'value': end_unixtime
                             }
@@ -128,20 +128,6 @@ def query_topic_cb(start_date_str, end_date_str, query, chunks_per_day=day_chunk
                                 'value': "consumer_behavior"
                             }
                         },
-                        # # Keyword filters
-                        # {
-                        #     'listContains': {
-                        #         'key': 'persons',
-                        #         'value': "biden"
-                        #     }
-                        # },
-                        # {
-                        #     'listContains': {
-                        #         'key': 'organizations',
-                        #         'value': "white house"
-                        #     }
-                        # }
-
                     ]
                 },
                 # aws bedrock get-foundation-model --model-identifier cohere.rerank-v3-5:0

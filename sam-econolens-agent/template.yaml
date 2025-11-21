@@ -9,15 +9,6 @@ Parameters:
     Type: String
     Default: EconolensAgent
     Description: Name for the Bedrock Agent
-  FoundationModelId:
-    Type: String
-    # https://docs.aws.amazon.com/bedrock/latest/userguide/models-supported.html
-    Default: anthropic.claude-haiku-4-5-20251001-v1:0
-    Description: Foundation model ID for the agent (Agent optimised Foundation models only)
-  AgentInstructions:
-    Type: String
-    Description: The instructions for the agent
-    Default: | 
 
 Globals:
   Function:
@@ -43,7 +34,8 @@ Resources:
       AgentName: !Ref AgentName # this is working
       AgentResourceRoleArn: !GetAtt BedrockAgentExecutionRole.Arn
       Description: "Agent for economic reporting and question answering. Required: Time-period dates (inclusive). Optional: Topic, entity keyword"
-      FoundationModel: !Ref FoundationModelId
+      # https://docs.aws.amazon.com/bedrock/latest/userguide/models-supported.html
+      FoundationModel: amazon.nova-pro-v1:0
       # PromptOverrideConfiguration:
       #   PromptConfigurations:
       #     # https://docs.aws.amazon.com/AWSCloudFormation/latest/TemplateReference/aws-properties-bedrock-agent-promptconfiguration.html
@@ -244,8 +236,6 @@ Resources:
             Examples:
               - You should invest now because shares because economic conditions look good 
               - You should not invest in Amazon shares because investors are betting on AI
-
-      
 
   # --- LAMBDA FUNCTIONS AND RESOURCE BASED POLICIES---
   # We explored "arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:agent/${AgentName}"
@@ -465,19 +455,3 @@ Resources:
                   - "bedrock:ApplyGuardrail"
                   - "bedrock:ListGuardrails"
                 Resource: !Sub "arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:agent/${AgentName}" # this has to be used instead of !GetAtt BedrockAgent.AgentArn
-
-               
-
-# Outputs:
-#   # ServerlessRestApi is an implicit API created out of Events key under Serverless::Function
-#   # Find out more about other implicit resources you can reference within SAM
-#   # https://github.com/awslabs/serverless-application-model/blob/master/docs/internals/generated_resources.rst#api
-#   HelloWorldApi:
-#     Description: "API Gateway endpoint URL for Prod stage for Hello World function"
-#     Value: !Sub "https://${ServerlessRestApi}.execute-api.${AWS::Region}.${AWS::URLSuffix}/Prod/hello/"
-#   HelloWorldFunction:
-#     Description: "Hello World Lambda Function ARN"
-#     Value: !GetAtt HelloWorldFunction.Arn
-#   HelloWorldFunctionIamRole:
-#     Description: "Implicit IAM Role created for Hello World function"
-#     Value: !GetAtt HelloWorldFunctionRole.Arn

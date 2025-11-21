@@ -91,8 +91,8 @@ def query_topic_elt(start_date_str, end_date_str, query, chunks_per_day=day_chun
 
     day_diff = days_difference(start_date_str, end_date_str)
     # max numberOfResults allowed is 100 chunks
-    n_chunks = 2 #min(day_diff * chunks_per_day, 100)
-    n_chunks_return = 2 #min(n_chunks, 50) # 50 chunks returned
+    n_chunks = min(day_diff * chunks_per_day, 100)
+    n_chunks_return = min(n_chunks, 100) # 50 chunks returned
 
     bedrock_agent_runtime = boto3.client('bedrock-agent-runtime')
 
@@ -117,7 +117,7 @@ def query_topic_elt(start_date_str, end_date_str, query, chunks_per_day=day_chun
                             }
                         },
                         {
-                            'lessThanOrEquals': {
+                            'lessThan': {
                                 'key': 'unix_time',
                                 'value': end_unixtime
                             }
@@ -129,20 +129,6 @@ def query_topic_elt(start_date_str, end_date_str, query, chunks_per_day=day_chun
                                 'value': "economy_long_term"
                             }
                         },
-                        # # Keyword filters
-                        # {
-                        #     'listContains': {
-                        #         'key': 'persons',
-                        #         'value': "biden"
-                        #     }
-                        # },
-                        # {
-                        #     'listContains': {
-                        #         'key': 'organizations',
-                        #         'value': "white house"
-                        #     }
-                        # }
-
                     ]
                 },
                 # aws bedrock get-foundation-model --model-identifier cohere.rerank-v3-5:0

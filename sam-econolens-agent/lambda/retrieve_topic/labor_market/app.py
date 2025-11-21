@@ -117,7 +117,7 @@ def query_topic_labor_market(start_date_str, end_date_str, query, chunks_per_day
                             }
                         },
                         {
-                            'lessThanOrEquals': {
+                            'lessThan': {
                                 'key': 'unix_time',
                                 'value': end_unixtime
                             }
@@ -129,20 +129,6 @@ def query_topic_labor_market(start_date_str, end_date_str, query, chunks_per_day
                                 'value': "labor_market"
                             }
                         },
-                        # # Keyword filters
-                        # {
-                        #     'listContains': {
-                        #         'key': 'persons',
-                        #         'value': "biden"
-                        #     }
-                        # },
-                        # {
-                        #     'listContains': {
-                        #         'key': 'organizations',
-                        #         'value': "white house"
-                        #     }
-                        # }
-
                     ]
                 },
                 # aws bedrock get-foundation-model --model-identifier cohere.rerank-v3-5:0

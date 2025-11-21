@@ -77,7 +77,7 @@ def query_date_topic(start_date_str, end_date_str, topic, chunks_per_day=4):
                             }
                         },
                         {
-                            'lessThanOrEquals': {
+                            'lessThan': {
                                 'key': 'unix_time',
                                 'value': end_unixtime
                             }
@@ -86,22 +86,22 @@ def query_date_topic(start_date_str, end_date_str, topic, chunks_per_day=4):
                         {
                             'stringContains': {
                                 'key': 'topic',
-                                'value': "economy_long_term"
+                                'value': topic
                             }
                         },
                         # Keyword filters
-                        {
-                            'listContains': {
-                                'key': 'persons',
-                                'value': "biden"
-                            }
-                        },
-                        {
-                            'listContains': {
-                                'key': 'organizations',
-                                'value': "white house"
-                            }
-                        }
+                        # {
+                        #     'listContains': {
+                        #         'key': 'persons',
+                        #         'value': "biden"
+                        #     }
+                        # },
+                        # {
+                        #     'listContains': {
+                        #         'key': 'organizations',
+                        #         'value': "white house"
+                        #     }
+                        # }
 
                     ]
                 },
@@ -119,14 +119,14 @@ def query_date_topic(start_date_str, end_date_str, topic, chunks_per_day=4):
             }
         }
     )
-#    print(response)
+    print(response)
     for i in response['retrievalResults']:
         print(i, "\n\n")
 
-sd = '2025-08-01'
-ed = '2025-08-02'
-topic = 'corporate'
-kb_id = "UV3UZXGEGZ"
+sd = '2025-07-01'
+ed = '2025-07-31'
+topic = 'inflation'
+kb_id = "7TJCJ0AADQ"
 query_date_topic(sd, ed, topic)
 
 def lambda_handler(event, context):
