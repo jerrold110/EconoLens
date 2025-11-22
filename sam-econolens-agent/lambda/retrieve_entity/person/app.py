@@ -8,7 +8,6 @@ from botocore.exceptions import ClientError
 kb_id = os.environ.get("BEDROCK_KNOWLEDGE_BASE_ID")
 day_chunk = int(os.environ.get("RETRIEVE_CHUNK_PER_DAY_COUNT"))
 rerank_chunk_return = int(os.environ.get("RERANK_CHUNK_COUNT"))
-query = 'News related to inflation'
 
 def with_backoff(func):
     """
@@ -70,12 +69,10 @@ def days_difference(start_date_str, end_date_str) -> int:
     return number_of_days + 1
 
 @with_backoff
-def query_topic_inflation(start_date_str, end_date_str, query, chunks_per_day=day_chunk, rerank_chunk_return=rerank_chunk_return):
+def query_topic_person(start_date_str, end_date_str, entity, query, chunks_per_day=day_chunk, rerank_chunk_return=rerank_chunk_return):
     """
     Query data based on prompt and metadata filters
     Rerank data
-
-    Roughly 5 chunks per day per topic. chunks are about ... tokens.
     """
     print('unix start and end')
     start_unixtime = date_to_unix(date_str=start_date_str)
@@ -83,7 +80,7 @@ def query_topic_inflation(start_date_str, end_date_str, query, chunks_per_day=da
 
     day_diff = days_difference(start_date_str, end_date_str)
     # max numberOfResults allowed is 100 chunks
-    n_chunks = min(day_diff * chunks_per_day, 100)
+    n_chunks_retrieve = min(day_diff * chunks_per_day, 100)
     n_chunks_return = min(rerank_chunk_return, 100)
 
     bedrock_agent_runtime = boto3.client('bedrock-agent-runtime')
@@ -97,7 +94,7 @@ def query_topic_inflation(start_date_str, end_date_str, query, chunks_per_day=da
         },
         retrievalConfiguration={
             'vectorSearchConfiguration': {
-                'numberOfResults': n_chunks,
+                'numberOfResults': n_chunks_retrieve,
                 'overrideSearchType': 'HYBRID',
                 'filter': {
                     'andAll': [
@@ -114,13 +111,13 @@ def query_topic_inflation(start_date_str, end_date_str, query, chunks_per_day=da
                                 'value': end_unixtime
                             }
                         },
-                        # Topic filters
+                        # Keyword filters
                         {
-                            'stringContains': {
-                                'key': 'topic',
-                                'value': "inflation"
+                            'listContains': {
+                                'key': 'organizations',
+                                'value': entity.lower()
                             }
-                        },
+                        }
                     ]
                 },
                 # aws bedrock get-foundation-model --model-identifier cohere.rerank-v3-5:0
@@ -138,7 +135,7 @@ def query_topic_inflation(start_date_str, end_date_str, query, chunks_per_day=da
         }
     )
 #    print(response)
-    payload = {'topic':"inflation",
+    payload = {'entity':"person",
                'chunks': n_chunks_return,
                'context':[]}
     
@@ -160,11 +157,14 @@ def lambda_handler(event, context):
 
     start_date_str = next(d['value'] for d in params if d['name'] == 'start_date_str')
     end_date_str = next(d['value'] for d in params if d['name'] == 'end_date_str')
+    entity = next(d['value'] for d in params if d['name'] == 'entity')
+    query = next(d['value'] for d in params if d['name'] == 'query')
+
+    payload = query_topic_person(start_date_str,
+                                end_date_str,
+                                entity,
+                                query)
     
-    payload = query_topic_inflation(start_date_str,
-                                       end_date_str,
-                                       query)
-    print(payload)
     agent = event['agent']
     actionGroup = event['actionGroup']
     function = event['function']
@@ -197,8 +197,7 @@ def lambda_handler(event, context):
     print(action_response)
     return action_response
 
-
-# print(query_topic_corporate("2025-08-01",
+# print(query_topic_labor_market("2025-08-01",
 #                             "2025-08-02",
-#                             'Mergers, acquisitions, earnings, corporate events, layoffs'
+#                             'Events about labor markets, employment, unemployment and their effects on the economy'
 #                             ))

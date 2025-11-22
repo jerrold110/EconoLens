@@ -70,7 +70,7 @@ def days_difference(start_date_str, end_date_str) -> int:
     return number_of_days + 1
 
 @with_backoff
-def query_topic_labor_market(start_date_str, end_date_str, query, chunks_per_day=day_chunk):
+def query_topic_labor_market(start_date_str, end_date_str, query, chunks_per_day=day_chunk, rerank_chunk_return=rerank_chunk_return):
     """
     Query data based on prompt and metadata filters
     Rerank data
@@ -80,14 +80,6 @@ def query_topic_labor_market(start_date_str, end_date_str, query, chunks_per_day
     print('unix start and end')
     start_unixtime = date_to_unix(date_str=start_date_str)
     end_unixtime = date_to_unix(date_str=end_date_str, is_end=True)
-    
-    # assert topic in ["consumer_behavior",
-    #                  "corporate",
-    #                  "economy_general",
-    #                  "economy_long_term",
-    #                  "government_and_policy",
-    #                  "inflation",
-    #                  "labor_market"]
 
     day_diff = days_difference(start_date_str, end_date_str)
     # max numberOfResults allowed is 100 chunks

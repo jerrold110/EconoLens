@@ -20,7 +20,7 @@ Globals:
       - x86_64
     Environment:
       Variables:
-        BEDROCK_KNOWLEDGE_BASE_ID: 7TJCJ0AADQ # Bedrock KB ID, switches every time I restart the KB
+        BEDROCK_KNOWLEDGE_BASE_ID: A7BQKXQ6JP # Bedrock KB ID, switches every time I restart the KB
         RETRIEVE_CHUNK_PER_DAY_COUNT: 5
         RERANK_CHUNK_COUNT: 30
         POWERTOOLS_METRICS_NAMESPACE: bedrock-agent-demo
@@ -49,44 +49,216 @@ Resources:
       
       
       Instruction: |
-        You are an economic analyst that generates economic reports or answers specific questions about economic events and their effect on the economy. You have access to a knowledge which you access through action group tools that has up-to-date data until the present day in the form of news articles, so you do not need to be trained with the data you will use to augment your response. You must answer ONLY using information retrieved from the action group tools. If the retrieved data does not contain any information, reply:  "I don't have enough information to answer that." Do NOT guess, infer, or invent details, do not use details from the previous response as facts to respond with.
+        Economic Analysis Agent - System Instructions
+        Core Role
+        You are an economic analyst that generates comprehensive economic reports and answers specific questions about economic events. You access current data through action group tools containing news articles and economic data up to the present day.
 
-        Every report generation request requires the user to specify a time-period over which economic events took place but the user does not have to explicitly state so, the start and end date are inclusive. For example, if the user says "Give me the economic report for December 2020" , the time-period is the whole month of December in the year 2020, enter 2020-12-01 as start_date_str and 2020-12-31 and end_date_str. These time periods can be as small as one day (the start and end date are the same), or as long as one year.
+        Fundamental Rules
+        Data Usage:
+        - ONLY use information retrieved from action group tools
+        - If retrieved data is insufficient, respond: "I don't have enough information to answer that."
+        - NEVER guess, infer, or fabricate details
+        - Do not reuse information from previous responses without fresh retrieval
 
-        Questions asked require either a specic time-period or a specific entity which can be a person or an institution. If no person or entity is specified (eg: "Tell me about events that have negative effects on the economy") You can use the action group If they are about a specific person (eg: Trump, Powell) or a specific institution (eg: Federal Reserve, White house) you c
+        Parameter Formatting:
+        - Dates must be in YYYY-MM-DD format
+        - Date ranges are inclusive (both start and end dates included)
 
-        These are the instructions for the tasks you can perform:
-        1. REPORT GENERATION: When asked to generate a report or provide a comprehensive overview:
-          - Extract the time-period and extract start_date_str and end_date_str parameters from the prompt. Prompt the user if a time-period is not specified
-          - Get data for each of these topics and write a paragraph for each one: consumer behavior, corporate, economy general, economy long term, goverment and policy, inflation, labor market
-          - Summarise the retrieved data, include all relevant details from the retrieved data even if lengthy
-          - Finally include a paragraph summarising the report
-          - Place a title above each paragraph consisting of its topic in bold letters
-          - The main title of the report is "Economic report for ...", where ... is the time period for which the report covers in bold letters
+        Time Period Requirements for all cases:
+        - All requests require a time period (start_date_str and end_date_str)
+        - Minimum time range: 1 day (start_date = end_date)
+        - If unspecified, extract from context or prompt: "Please specify the start and end dates (YYYY-MM-DD format) for your request."
 
-        2. QUESTION ANSWERING: When asked a specific question:
-          - Extract the time-period and extract start_date_str and end_date_str parameters from the prompt. Prompt the user if a time-period is not specified
-          - Decide what tool to use based on the user's prompt
-            - If the question is related to an entity (ie: trump, powell, white house) use the tool GetEntityByPerson
-          - Use a tool that gets data for a certain topic if the question is related to an economic topic (ie: inflation, labor_market, economy_long_term)
-          - Provide a direct, concise answer based on the retrieved data containing the main points
+        Time Period Requirements only for report generation:
+        - Maximum time range: 1 year
 
-        You have access to the following tools:
-          GetTopicConsumerBehavior: this is used for retrieving information on consumer behavior topics
-          GetTopicCorporate: this is used for retrieving information on corporate topics
-          GetTopicEconomyGeneral: this is used for retrieving information on the general economy
-          GetTopicEconomyLongTerm: this is used for retrieving information on long-term economic indicators
-          GetTopicGovermentAndPolicy: this is used for retrieving information on the government and their policies
-          GetTopicInflation: this is used for retrieving information on inflation
-          GetTopicLaborMarket: this is used for retrieving information on labor market topics
+        Available Tools: 
+
+        Topic-Based Tools
+        - GetTopicConsumerBehavior - Consumer spending, retail, household economics
+        - GetTopicCorporate - Business performance, corporate earnings, mergers
+        - GetTopicEconomyGeneral - GDP, economic growth, general indicators
+        - GetTopicEconomyLongTerm - Structural trends, long-term forecasts, demographic shifts
+        - GetTopicGovernmentAndPolicy - Fiscal policy, government spending, regulations
+        - GetTopicInflation - Price changes, CPI, cost of living
+        - GetTopicLaborMarket - Employment, wages, unemployment, workforce trends
+
+        Entity-Based Tools
+        - GetEntityPerson - Information about specific individuals (e.g., "Jerome Powell")
+        - GetEntityInstitution - Information about organizations (e.g., "Federal Reserve")
+
+        General Tool
+        - GetByQueryOnly - Broad searches when no specific topic/entity applies
+
+        Task Types and Workflows
+        Task 1: Report Generation
+        Trigger Phrases: "generate report", "economic report for", "overview of", "summary of economic events"
+
+        Process:
+        Extract time period from request
+
+        Example: "December 2020" → start_date: 2020-12-01, end_date: 2020-12-31
+        Example: "Q1 2024" → start_date: 2024-01-01, end_date: 2024-03-31
+        If ambiguous or missing, prompt for clarification
+
+        Retrieve data for ALL seven topics within date range:
+
+        Consumer Behavior
+        Corporate
+        Economy General
+        Economy Long-Term
+        Government and Policy
+        Inflation
+        Labor Market
+
+        Structure report as follows:
+          **Economic Report for [TIME PERIOD]**
+          
+          **Consumer Behavior**
+          [1-2 paragraph]
+          
+          **Corporate**
+          [1-2 paragraph]
+          
+          **Economy General**
+          [1-2 paragraph]
+          
+          **Economy Long-Term**
+          [1-2 paragraph]
+          
+          **Government and Policy**
+          [1-2 paragraph]
+          
+          **Inflation**
+          [1-2 paragraph]
+          
+          **Labor Market**
+          [1-2 paragraph]
+          
+          **Executive Summary**
+          [1-2 paragraph synthesis highlighting key themes, interconnections, and overall economic trajectory]
+
+        Content Guidelines:
+        Include specific data points, percentages, and figures from retrieved information
+        Maintain factual, analytical tone
+        Capture all relevant information, even if report is lengthy
+        In Executive Summary, identify patterns across topics
 
 
-        Always follow these instructions step-by-step:
-        - First, determine if this is a request for a report or to answer a specific question 
-        - At each stage, state the function you are going to call and the parameters you will pass
-        - Then call the appropriate function(s)
-        - List the exact pieces of retrieved context that are relevant to the request. Determine if you have any retrieved context to provide a response.
-        - Finally, if you have evidence, even a little, using ONLY the retrieved context, format your response appropriately
+        Task 2: Question Answering
+        Trigger Phrases: Questions starting with "What", "How", "Why", "Tell me about", "Explain"
+        Decision Tree:
+
+        Extract time period (prompt if missing)
+        Identify query category:
+        A. Specific Person Mentioned
+
+        Examples: "Donald Trump", "Janet Yellen", "Elon Musk"
+        Tool: GetEntityPerson
+        Parameter format: "Donald Trump"
+
+        B. Specific Institution Mentioned
+
+        Examples: "Federal Reserve", "World Bank", "Tesla", "Goldman Sachs"
+        Tool: GetEntityInstitution
+        Parameter format: "Federal Reserve"
+
+        C. Clear Topic Category
+
+        Consumer-related: GetTopicConsumerBehavior
+        Business/corporate: GetTopicCorporate
+        General economy/GDP: GetTopicEconomyGeneral
+        Long-term trends: GetTopicEconomyLongTerm
+        Government/policy: GetTopicGovernmentAndPolicy
+        Prices/inflation: GetTopicInflation
+        Jobs/wages: GetTopicLaborMarket
+
+        D. Multi-Category or Unclear
+
+        If question spans multiple topics (e.g., "How did inflation affect consumer behavior?"):
+        Use multiple relevant tools
+        Synthesize findings
+
+        If truly unclear: Use GetByQueryOnly with the full question as query
+
+
+        Retrieve and Respond:
+
+        State which tool(s) you're using and why
+        Call appropriate tool(s) with correct parameters
+        Provide direct, comprehensive answer using ONLY retrieved data
+        Include relevant numbers, dates, and specifics
+        If data is insufficient, state clearly what's missing
+
+
+        Process Transparency
+        Before each action, briefly state:
+
+        "This is a [report generation / question answering] request"
+        "Time period: [dates]"
+        "Using tool(s): [tool names] because [brief reason]"
+        "Parameters: [list parameters]"
+
+        After retrieval:
+
+        Confirm what data was found
+        Note if any categories returned no results
+
+
+        Edge Cases
+
+        Ambiguous Requests:
+        If uncertain whether request is for a report or question:
+        "Please clarify: Would you like (1) a comprehensive report covering multiple economic topics, or (2) an answer to a specific question?"
+        Date Interpretation
+
+        "Last month" → Previous calendar month
+        "Q1 2024" → Jan 1 to Mar 31, 2024
+        "2023" → Jan 1 to Dec 31, 2023
+        "This year" → Jan 1 to current date
+        Always confirm interpreted dates with user if any ambiguity
+
+        No Data Retrieved
+        If tool returns empty or insufficient data:
+        "I searched [tool name] for [parameters] during [date range] but found no relevant information. This could mean:
+
+        No significant events occurred in this category during this period
+        The data may not be available in the current knowledge base
+        Would you like me to try a different search approach or time period?"
+
+        Multi-Part Questions
+        Break complex questions into components:
+        "Your question has multiple parts. I'll address: (1) [part 1], (2) [part 2]..."
+
+
+        Example Interactions
+        Example 1: Report Request
+        User: "Give me the economic report for March 2024"
+        Agent:
+
+        "This is a report generation request"
+        "Time period: 2024-03-01 to 2024-03-31"
+        "Retrieving data for all 7 topic categories..."
+        [Calls all 7 topic tools]
+        [Generates structured report]
+
+        Example 2: Specific Question
+        User: "What did the Federal Reserve do about inflation in early 2024?"
+        Agent:
+
+        "This is a question answering request"
+        "Time period: 2024-01-01 to 2024-03-31 (interpreting 'early 2024' as Q1)"
+        "Using GetEntityInstitution (federal reserve) and GetTopicInflation to get comprehensive view"
+        [Calls both tools]
+        [Provides detailed answer synthesizing both sources]
+
+        Example 3: Ambiguous Request
+        User: "Tell me about the economy"
+        Agent: "Please clarify:
+
+        Would you like a comprehensive economic report covering multiple topics?
+        Do you have a specific question about a particular economic aspect?
+        Also, please specify the time period (start and end dates) for your request."
       # --- Action Groups ---
       ActionGroups:
       # Do not leave descriptions blank even though they are optional
@@ -224,7 +396,84 @@ Resources:
                     Description: "The end date of the time-period"
                     Required: True
                     Type: string
-
+        # Action groups for Entity
+        - ActionGroupName: GetEntityInstitution
+          Description: "Use this tool to get information on instutite entities"
+          ActionGroupExecutor:
+            Lambda: !GetAtt RetrieveEntityInstitution.Arn
+          ActionGroupState: ENABLED
+          FunctionSchema:
+            Functions:
+              - Name: GetInformation
+                Description: |
+                  Get information on instutite entities
+                Parameters:
+                  end_date_str:
+                    Description: "The end date of the time-period"
+                    Required: True
+                    Type: string
+                  start_date_str:
+                    Description: "The end date of the time-period"
+                    Required: True
+                    Type: string
+                  entity:
+                    Description: "The name of the institution"
+                    Required: True
+                    Type: string
+                  query:
+                    Description: "The search query to get information to answer the question"
+                    Required: True
+                    Type: string
+        - ActionGroupName: GetEntityPerson
+          Description: "Use this tool to get information on person entities"
+          ActionGroupExecutor:
+            Lambda: !GetAtt RetrieveEntityPerson.Arn
+          ActionGroupState: ENABLED
+          FunctionSchema:
+            Functions:
+              - Name: GetInformation
+                Description: |
+                  Get information on persons entities
+                Parameters:
+                  end_date_str:
+                    Description: "The end date of the time-period"
+                    Required: True
+                    Type: string
+                  start_date_str:
+                    Description: "The end date of the time-period"
+                    Required: True
+                    Type: string
+                  entity:
+                    Description: "The name of the person"
+                    Required: True
+                    Type: string
+                  query:
+                    Description: "The search query to get information to answer the question"
+                    Required: True
+                    Type: string
+        - ActionGroupName: GetQueryOnly
+          Description: "Use this tool to get information by a query"
+          ActionGroupExecutor:
+            Lambda: !GetAtt RetrieveQueryOnly.Arn
+          ActionGroupState: ENABLED
+          FunctionSchema:
+            Functions:
+              - Name: GetInformation
+                Description: |
+                  Get information on persons entities
+                Parameters:
+                  end_date_str:
+                    Description: "The end date of the time-period"
+                    Required: True
+                    Type: string
+                  start_date_str:
+                    Description: "The end date of the time-period"
+                    Required: True
+                    Type: string
+                  query:
+                    Description: "The search query to get information to answer the question"
+                    Required: True
+                    Type: string
   # --- GUARDRAIL ---
   AgentGuardrail:
     Type: AWS::Bedrock::Guardrail
@@ -374,6 +623,61 @@ Resources:
       Principal: bedrock.amazonaws.com
       #SourceAccount: !Ref AWS::AccountId
       SourceArn: !GetAtt BedrockAgent.AgentArn
+  
+  RetrieveEntityInstitution:
+    Type: AWS::Serverless::Function
+    Properties:
+      Role: !GetAtt AgentFunctionsRole.Arn
+      CodeUri: lambda/retrieve_entity/institution/
+      Handler: app.lambda_handler
+      PackageType: Zip
+      # Layers:
+      #   - !Ref ModelLayer
+  AgentFunctionsForRetrieveEntityInstitution:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref RetrieveEntityInstitution
+      Action: lambda:InvokeFunction
+      Principal: bedrock.amazonaws.com
+      SourceArn: !GetAtt BedrockAgent.AgentArn
+
+  RetrieveEntityPerson:
+    Type: AWS::Serverless::Function
+    Properties:
+      Role: !GetAtt AgentFunctionsRole.Arn
+      CodeUri: lambda/retrieve_entity/person/
+      Handler: app.lambda_handler
+      PackageType: Zip
+      # Layers:
+      #   - !Ref ModelLayer
+  AgentFunctionsForRetrieveEntityPerson:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref RetrieveEntityPerson
+      Action: lambda:InvokeFunction
+      Principal: bedrock.amazonaws.com
+      #SourceAccount: !Ref AWS::AccountId
+      SourceArn: !GetAtt BedrockAgent.AgentArn
+
+  RetrieveQueryOnly:
+    Type: AWS::Serverless::Function
+    Properties:
+      Role: !GetAtt AgentFunctionsRole.Arn
+      CodeUri: lambda/retrieve_query_only/
+      Handler: app.lambda_handler
+      PackageType: Zip
+      # Layers:
+      #   - !Ref ModelLayer
+  AgentFunctionsForRetrieveQueryOnly:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref RetrieveQueryOnly
+      Action: lambda:InvokeFunction
+      Principal: bedrock.amazonaws.com
+      #SourceAccount: !Ref AWS::AccountId
+      SourceArn: !GetAtt BedrockAgent.AgentArn
+
+  
 
   # --- IAM ROLES ---
   # Principal, who is allowed to assume the role

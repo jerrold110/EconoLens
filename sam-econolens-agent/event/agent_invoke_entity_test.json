@@ -1,0 +1,29 @@
+{
+  "messageVersion": "1.0",
+  "function": "GetInformation",
+  "parameters": [
+    {
+      "name": "end_date_str",
+      "type": "string",
+      "value": "2025-08-31"
+    },
+    {
+      "name": "start_date_str",
+      "type": "string",
+      "value": "2025-08-01"
+    },
+    {"name": "entity", "type": "string", "value": "Federal Reserve"},
+    {"name": "query", "type": "string", "value": "federal reserve"}
+  ],
+  "sessionId": "975373241930390",
+  "agent": {
+    "name": "EconolensAgent",
+    "version": "DRAFT",
+    "id": "KNMIHBGYRE",
+    "alias": "TSTALIASID"
+  },
+  "actionGroup": "GetTopicABCDEFG",
+  "sessionAttributes": {},
+  "promptSessionAttributes": {},
+  "inputText": "BLA BLA BLA"
+}
