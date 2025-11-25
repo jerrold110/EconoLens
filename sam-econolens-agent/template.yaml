@@ -20,11 +20,9 @@ Globals:
       - x86_64
     Environment:
       Variables:
-        BEDROCK_KNOWLEDGE_BASE_ID: A7BQKXQ6JP # Bedrock KB ID, switches every time I restart the KB
+        BEDROCK_KNOWLEDGE_BASE_ID: HHY7OO1DZR # Bedrock KB ID, switches every time I restart the KB
         RETRIEVE_CHUNK_PER_DAY_COUNT: 5
-        RERANK_CHUNK_COUNT: 30
-        POWERTOOLS_METRICS_NAMESPACE: bedrock-agent-demo
-        POWERTOOLS_SERVICE_NAME: bedrock-agent-demo
+        RERANK_CHUNK_COUNT: 100 # and number of returned chunks
 # https://repost.aws/questions/QUwyrhlEugTH-DV_dH5lG3Ag/issue-with-bedrock-agents-and-lambda-function-model-timeout-error
 Resources:
   # --- BEDROCK AGENT ---
@@ -36,26 +34,15 @@ Resources:
       Description: "Agent for economic reporting and question answering. Required: Time-period dates (inclusive). Optional: Topic, entity keyword"
       # https://docs.aws.amazon.com/bedrock/latest/userguide/models-supported.html
       FoundationModel: amazon.nova-pro-v1:0
-      # This requires knowledge of advanced prompting to form base templates of, it would be better to develop agent from scratch 
-      # https://docs.aws.amazon.com/AWSCloudFormation/latest/TemplateReference/aws-properties-bedrock-agent-inferenceconfiguration.html
-      # https://docs.aws.amazon.com/bedrock/latest/userguide/advanced-prompts.html
-      # PromptOverrideConfiguration:
-      #   PromptConfigurations:
-      #     # https://docs.aws.amazon.com/AWSCloudFormation/latest/TemplateReference/aws-properties-bedrock-agent-promptconfiguration.html
-      #     # PRE_PROCESSING | ORCHESTRATION | POST_PROCESSING | ROUTING_CLASSIFIER | MEMORY_SUMMARIZATION | KNOWLEDGE_BASE_RESPONSE_GENERATION
-      #     # https://docs.aws.amazon.com/bedrock/latest/userguide/agents-how.html
-      #   - PromptType: POST_PROCESSING
-      #     PromptCreationMode: DEFAULT
       
-      
+      # ---Instructions ---
       Instruction: |
-        You are an economic analyst that generates economic reports and answers specific questions about economic events. You access current data through action group tools containing news articles up to the present day.
-        You must answer ONLY using information retrieved from the action group tools. If the retrieved data does not contain any information, reply: "I don't have enough information to answer that." Do NOT guess, infer, or invent details, do not use details from the previous response as facts to respond with.
+        You are an economic analyst that generates economic reports and answers specific questions about economic events, in the American economy. You access current data through action group tools containing news articles up to the present day.
+        You must answer ONLY using information retrieved from the action group tools. If the retrieved data does not contain any information, reply: "I don't have enough information to answer that." Do NOT use details from the previous response as facts to respond with.
 
         Fundamental Rules
         - ONLY use information retrieved from action group tools
         - If there is no data retrieved from tools, respond with: "I don't have enough information to answer that."
-        - ONLY use information gathered from tools
         - NEVER reuse information from previous responses without fresh retrieval
 
         Parameter Formatting:
@@ -133,11 +120,11 @@ Resources:
           [paragraph]
 
         Instructions:
-        Generate a report ONLY if you have retrieved information from the tools. If there is no information retrieved from tools, respond with: "I don't have enough information to answer that."
-        Include specific data points, percentages, and figures from retrieved information
-        Maintain factual, analytical tone
-        Include all important information, let the paragraph be lengthy.
-        Include a executive summary in the last paragraph
+          Generate a report ONLY if you have retrieved information from the tools. If there is no information retrieved from tools, respond with: "I don't have enough information to answer that."
+          Include specific data points, percentages, and figures from retrieved information
+          Maintain factual, analytical tone
+          Include all important information, let the paragraph be lengthy
+          Include a executive summary in the last paragraph
 
         Task 2: Question Answering
         Trigger Phrases: Questions starting with "What", "How", "Why", "Tell me about", "Explain"
@@ -222,8 +209,10 @@ Resources:
         Confirm what data was found
         Note if any categories returned no results
 
-
-      
+      # --- Guardrail ---
+      GuardrailConfiguration:
+        GuardrailIdentifier: !GetAtt AgentGuardrail.GuardrailId
+        GuardrailVersion: !GetAtt MainGuardrailVersion.Version
       # --- Action Groups ---
       ActionGroups:
       # Do not leave descriptions blank even though they are optional
@@ -439,22 +428,95 @@ Resources:
                     Description: "The search query to get information to answer the question"
                     Required: True
                     Type: string
+      # This prompt override (change temp, maxLength...) requires knowledge of advanced prompting to form base templates of, it would be better to develop agent from scratch 
+      # https://docs.aws.amazon.com/AWSCloudFormation/latest/TemplateReference/aws-properties-bedrock-agent-inferenceconfiguration.html
+      # https://docs.aws.amazon.com/AWSCloudFormation/latest/TemplateReference/aws-properties-bedrock-agent-promptconfiguration.html
+      # https://docs.aws.amazon.com/bedrock/latest/userguide/advanced-prompts.html
+      # https://docs.aws.amazon.com/bedrock/latest/userguide/agents-how.html
+      # PromptOverrideConfiguration:
+      #   PromptConfigurations:
+      #   - PromptType: POST_PROCESSING
+      #     PromptCreationMode: OVERRIDDEN
+      #     InferenceConfiguration:
+      #       MaximumLength: 2048 # Original should be
+      #     BasePromptTemplate: |
+      #                           {
+      #                           "system": "
+      #                           You are an agent tasked with providing more context to an answer that a function calling agent outputs. The function calling agent takes in a user's question and calls the appropriate functions (a function call is equivalent to an API call) that it has been provided with in order to take actions in the real-world and gather more information to help answer the user's question.
+
+      #                           At times, the function calling agent produces responses that may seem confusing to the user because the user lacks context of the actions the function calling agent has taken. Here's an example:
+      #                           <example>
+      #                               The user tells the function calling agent: 'Acknowledge all policy engine violations under me. My alias is jsmith, start date is 09/09/2023 and end date is 10/10/2023.'
+
+      #                               After calling a few API's and gathering information, the function calling agent responds, 'What is the expected date of resolution for policy violation POL-001?'
+
+      #                               This is problematic because the user did not see that the function calling agent called API's due to it being hidden in the UI of our application. Thus, we need to provide the user with more context in this response. This is where you augment the response and provide more information.
+
+      #                               Here's an example of how you would transform the function calling agent response into our ideal response to the user. This is the ideal final response that is produced from this specific scenario: 'Based on the provided data, there are 2 policy violations that need to be acknowledged - POL-001 with high risk level created on 2023-06-01, and POL-002 with medium risk level created on 2023-06-02. What is the expected date of resolution date to acknowledge the policy violation POL-001?'
+      #                           </example>
+
+      #                           It's important to note that the ideal answer does not expose any underlying implementation details that we are trying to conceal from the user like the actual names of the functions.
+
+      #                           Do not ever include any API or function names or references to these names in any form within the final response you create. An example of a violation of this policy would look like this: 'To update the order, I called the order management APIs to change the shoe color to black and the shoe size to 10.' The final response in this example should instead look like this: 'I checked our order management system and changed the shoe color to black and the shoe size to 10.'
+
+      #                           Now you will try creating a final response. Here's the original user input <user_input>$question$</user_input>.
+
+      #                           Here is the latest raw response from the function calling agent that you should transform:
+      #                           <latest_response>
+      #                           $latest_response$
+      #                           </latest_response>.
+
+      #                           And here is the history of the actions the function calling agent has taken so far in this conversation:
+      #                           <history>
+      #                           $responses$
+      #                           </history>",
+      #                                   "messages": [
+      #                                       {
+      #                                           "role": "user",
+      #                                           "content": [{
+      #                                               "text": "Please output your transformed response within <final_response></final_response> XML tags."
+      #                                           }]
+      #                                       }
+      #                                   ]
+      #                               }
+          
+  
+  
+  # --- AGENT ALIAS ---
+  AgentAlias:
+    Type: AWS::Bedrock::AgentAlias
+    Properties:
+      AgentAliasName: !Sub "${AgentName}"
+      AgentId: !GetAtt BedrockAgent.AgentId
+      Description: !Sub "${AgentName}"
+
   # --- GUARDRAIL ---
   AgentGuardrail:
     Type: AWS::Bedrock::Guardrail
     Properties:
-      Name: Econolens_guardrail
-      Description: Guardrails for contextual grounding check
+      Name: EconolensAgent_guardrail
+      Description: |
+        This Guardrail is for the Econolens AI Agent and blocks prompts about non-american economies, and might include grounding checks
       BlockedInputMessaging: The input contains blocked content
-      BlockedOutputsMessaging: The system returned an invalid response
+      BlockedOutputsMessaging: The system returned a response containing blocked content
       TopicPolicyConfig:
         TopicsConfig:
-          - Name: BlockFinancialAdvice
+          - Definition: This blocks prompts about economies outside the USA
+            Name: BlockEconomyOutsideUSA
             Type: DENY
-            Definition: This policy blocks financial advice
+            InputAction: BLOCK
+            OutputAction: NONE
             Examples:
-              - You should invest now because shares because economic conditions look good 
-              - You should not invest in Amazon shares because investors are betting on AI
+              - Generate a report for the Chinese Economy in 2025
+              - What are the driving factors of Inflation in European markets?
+              - What are the differences in labor market trends in Germany between 2024 and 2025
+              
+  MainGuardrailVersion:
+    Type: AWS::Bedrock::GuardrailVersion
+    Properties:
+      Description: A sample description of this guardrail version
+      GuardrailIdentifier: !GetAtt AgentGuardrail.GuardrailId
+            
 
   # --- LAMBDA FUNCTIONS AND RESOURCE BASED POLICIES---
   # We explored "arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:agent/${AgentName}"

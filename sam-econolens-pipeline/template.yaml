@@ -129,7 +129,7 @@ Resources:
         - x86_64
       Role: !GetAtt EconolensDATAENRICHMENTRole.Arn
       # increasedfor loading en_core_web_sm model. default is 128 MB https://docs.aws.amazon.com/lambda/latest/dg/configuration-memory.html#configuration-memory-use-cases 
-      MemorySize: 512 
+      MemorySize: 512
     Metadata:
       Dockerfile: Dockerfile
       DockerContext: ./functions/pipeline_2_data_enrichment

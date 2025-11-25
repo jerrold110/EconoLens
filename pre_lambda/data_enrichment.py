@@ -29,39 +29,6 @@ from os.path import join, dirname
 from dotenv import load_dotenv
 
 # -------------------------------
-# Summarization functions
-# -------------------------------
-
-# def query_endpoint(encoded_text):
-#     client = boto3.client('runtime.sagemaker')
-#     response = client.invoke_endpoint(
-#         EndpointName=endpoint_name,
-#         ContentType='application/x-text',
-#         Body=encoded_text
-#     )
-#     return response
-
-# def parse_response(response):
-#     model_predictions = json.loads(response['Body'].read())
-#     return model_predictions['summary_text']
-
-# def get_summary(input_text):
-#     try:
-#         query_response = query_endpoint(input_text.encode('utf-8'))
-#     except Exception as e:
-#         if hasattr(e, "response") and e.response['Error']['Code'] == 'ModelError':
-#             raise Exception(f"Model error, please launch the endpoint again. Error: {e}.")
-#         else:
-#             raise
-            
-#     try:
-#         summary_text = parse_response(query_response)
-#     except (TypeError, KeyError) as e:
-#         raise Exception(e)
-
-#     return summary_text
-
-# -------------------------------
 # Helpers functions
 # -------------------------------
 
@@ -69,26 +36,6 @@ from dotenv import load_dotenv
 nlp = spacy.load('en_core_web_sm')
 stop_words = nlp.Defaults.stop_words  # spaCy's built-in stopwords set
 
-# def remove_non_ascii_encode_decode(text):
-#     """
-#     Remove non ascii characters from a string
-#     """
-#     return text.encode('ascii', 'ignore').decode('ascii')
-
-# def remove_escape_sequences(text):
-#     """
-#     Replace common escape sequences in a string with a single space.
-#     """
-#     # Matches: \n, \t, \r, \b, \f, \a, \v, \', \", \\, \xhh, \uhhhh, \Uhhhhhhhh
-#     pattern = r'\\[abfnrtv\'"\\]|\\x[0-9A-Fa-f]{2}|\\u[0-9A-Fa-f]{4}|\\U[0-9A-Fa-f]{8}'
-    
-#     # Replace escape sequences with a single space
-#     cleaned = re.sub(pattern, ' ', text)
-    
-#     # Optionally, collapse multiple spaces into one
-#     cleaned = re.sub(r'\s+', ' ', cleaned).strip()
-    
-#     return cleaned
 
 def extract_persons_and_orgs(text):
     """
@@ -160,13 +107,12 @@ def clean_text_for_ingestion(text: str) -> str:
 def copy_json_files_from_s3(date_prefix):
     """
     Copies JSON files from `source_bucket` whose keys start with `date_prefix`
-    to `dest_bucket`, extracting content and metadata separately.
+    to `dest_bucket`, extracting content and metadata separately. All objects are encoded into utf-8 and encoding is declared in upload
 
     Transformations:
       - source: 2025-10-11/economy_general/filename.json
-        → dest: 2025-10-11/original/economy_general/filename.txt
-      - metadata file: 
-        → dest: 2025-10-11/original/economy_general/filename.metadata.json
+        → dest: 2025-10-11/economy_general/filename.txt
+        → dest: 2025-10-11/economy_general/filename.txt.metadata.json
 
     """
     s3 = boto3.client("s3", region_name="us-east-1")
@@ -186,8 +132,8 @@ def copy_json_files_from_s3(date_prefix):
                 # Download the JSON object
                 print(f"🔹 Processing: {key}")
                 response = s3.get_object(Bucket=source_bucket, Key=key)
-                data = json.loads(response["Body"].read().decode("utf-8"))
-
+                data = json.loads(response["Body"].read()) # Unknown byte encoding right now
+                
                 # Extract fields and clean data
                 content = clean_text_for_ingestion(data.get("content"))
                 persons_metadata, orgs_metadata = extract_persons_and_orgs(content)
@@ -206,8 +152,8 @@ def copy_json_files_from_s3(date_prefix):
                     print(f"⚠️ Skipping {key}: unexpected key format.")
                     continue
 
-                date_prefix_dir = parts[0]              # e.g., "2025-10-11"
-                sub_path = parts[1]                     # e.g., "economy_general/filename.json"
+                date_prefix_dir = parts[0] # e.g., "2025-10-11"
+                sub_path = parts[1] # e.g., "economy_general/filename.json"
                 sub_path_txt = sub_path.replace(".json", ".txt")
                 sub_path_metadata = sub_path.replace(".json", ".txt.metadata.json")
 
@@ -215,15 +161,17 @@ def copy_json_files_from_s3(date_prefix):
                 dest_txt_key = f"{date_prefix_dir}/{sub_path_txt}"
                 dest_metadata_key = f"{date_prefix_dir}/{sub_path_metadata}"
 
-                # Upload text file
+                # Upload String as a text file
+                # Encode as UTF8 so that S3 receives actual UTF-8 bytes https://www.rfc-editor.org/rfc/rfc9110.html#name-content-type
+                # Declare the endoding in metadata
                 s3.put_object(
                     Bucket=dest_bucket,
                     Key=dest_txt_key,
                     Body=content.encode("utf-8"),
-                    ContentType="text/plain"
+                    ContentType="text/plain; charset=utf-8"
                 )
 
-                # Build and upload metadata JSON
+                # Upload metadata JSON
                 metadata_obj = {
                     "metadataAttributes": {
                         "title": title,
@@ -235,12 +183,12 @@ def copy_json_files_from_s3(date_prefix):
                         "organizations": orgs_metadata
                     }
                 }
-
+                json_bytes = json.dumps(metadata_obj, ensure_ascii=False).encode("utf-8")
                 s3.put_object(
                     Bucket=dest_bucket,
                     Key=dest_metadata_key,
-                    Body=json.dumps(metadata_obj, ensure_ascii=False, indent=2).encode("utf-8"),
-                    ContentType="application/json"
+                    Body=json_bytes,
+                    ContentType="application/json; charset=utf-8"
                 )
 
                 print(f"✅ Processed {key}")
@@ -257,145 +205,145 @@ def copy_json_files_from_s3(date_prefix):
 # Main Function
 # -------------------------------
 
-def summarize_json_files_from_s3(
-    date_prefix,
-    context_window=1000, # reduce context_window slightly from 1024 to reduce errors
-    overlap=100
-):
-    """
-    Reads JSON files from `source_bucket` (e.g. 2025-10-11/economy_general/filename.json),
-    extracts 'content', tokenizes and chunks if needed, summarizes each chunk via SageMaker,
-    and uploads summarized text and metadata to `dest_bucket` under:
-    2025-10-11/summarized/economy_general/filename.txt
-    and corresponding metadata file.
+# def summarize_json_files_from_s3(
+#     date_prefix,
+#     context_window=1000, # reduce context_window slightly from 1024 to reduce errors
+#     overlap=100
+# ):
+#     """
+#     Reads JSON files from `source_bucket` (e.g. 2025-10-11/economy_general/filename.json),
+#     extracts 'content', tokenizes and chunks if needed, summarizes each chunk via SageMaker,
+#     and uploads summarized text and metadata to `dest_bucket` under:
+#     2025-10-11/summarized/economy_general/filename.txt
+#     and corresponding metadata file.
 
-    Args:
-        date_prefix (str): Prefix like '2025-10-11/'.
-        context_window (int): Token limit per chunk.
-        overlap (int): Overlap between chunks.
-    """
-    s3 = boto3.client("s3", region_name="us-east-1")
-    paginator = s3.get_paginator("list_objects_v2")
-    pages = paginator.paginate(Bucket=source_bucket, Prefix=date_prefix)
+#     Args:
+#         date_prefix (str): Prefix like '2025-10-11/'.
+#         context_window (int): Token limit per chunk.
+#         overlap (int): Overlap between chunks.
+#     """
+#     s3 = boto3.client("s3", region_name="us-east-1")
+#     paginator = s3.get_paginator("list_objects_v2")
+#     pages = paginator.paginate(Bucket=source_bucket, Prefix=date_prefix)
 
-    # tokenizer for the model in the summarisation endpoint
-    tokenizer = AutoTokenizer.from_pretrained("sshleifer/distilbart-cnn-12-6")
+#     # tokenizer for the model in the summarisation endpoint
+#     tokenizer = AutoTokenizer.from_pretrained("sshleifer/distilbart-cnn-12-6")
 
-    for page in pages:
-        for obj in page.get("Contents", []):
-            key = obj["Key"]
+#     for page in pages:
+#         for obj in page.get("Contents", []):
+#             key = obj["Key"]
 
-            # Only process .json files, skip summarized or metadata
-            if not key.endswith(".json") or "/summarized/" in key:
-                continue
+#             # Only process .json files, skip summarized or metadata
+#             if not key.endswith(".json") or "/summarized/" in key:
+#                 continue
 
-            print(f"🔹 Processing {key}")
+#             print(f"🔹 Processing {key}")
 
-            try:
-                # -------------------------------
-                # Read JSON file
-                # -------------------------------
-                response = s3.get_object(Bucket=source_bucket, Key=key)
-                data = json.loads(response["Body"].read().decode("utf-8"))
+#             try:
+#                 # -------------------------------
+#                 # Read JSON file
+#                 # -------------------------------
+#                 response = s3.get_object(Bucket=source_bucket, Key=key)
+#                 data = json.loads(response["Body"].read().decode("utf-8"))
 
-                content = remove_non_ascii_encode_decode(data.get("content"))
-                published_at = data.get("publishedAt")
-                topic = data.get("topic")
-                title = data.get("title")
-                dt = datetime.fromisoformat(published_at.replace("Z", "+00:00"))
-                unix_time = int(dt.timestamp())
+#                 content = remove_non_ascii_encode_decode(data.get("content"))
+#                 published_at = data.get("publishedAt")
+#                 topic = data.get("topic")
+#                 title = data.get("title")
+#                 dt = datetime.fromisoformat(published_at.replace("Z", "+00:00"))
+#                 unix_time = int(dt.timestamp())
 
-                if not content:
-                    print(f"⚠️ Skipping {key}: missing 'content' field.")
-                    continue
+#                 if not content:
+#                     print(f"⚠️ Skipping {key}: missing 'content' field.")
+#                     continue
 
-                # -------------------------------
-                # Tokenize and chunk if needed
-                # -------------------------------
-                tokens = tokenizer(content, return_offsets_mapping=True, truncation=False)
-                input_ids = tokens["input_ids"]
-                print('Length of sequence:',len(input_ids))
-                if len(input_ids) > context_window:
-                    print(f"✂️ Text exceeds {context_window} tokens; chunking required.")
-                    chunks = []
-                    start = 0
-                    while start < len(input_ids):
-                        end = start + context_window
-                        chunk_tokens = input_ids[start:end]
-                        chunk_text = tokenizer.decode(chunk_tokens).lstrip('<s>').rstrip('</s>')
-                        chunks.append(chunk_text)
-                        start += context_window - overlap
-                else:
-                    chunks = [content]
+#                 # -------------------------------
+#                 # Tokenize and chunk if needed
+#                 # -------------------------------
+#                 tokens = tokenizer(content, return_offsets_mapping=True, truncation=False)
+#                 input_ids = tokens["input_ids"]
+#                 print('Length of sequence:',len(input_ids))
+#                 if len(input_ids) > context_window:
+#                     print(f"✂️ Text exceeds {context_window} tokens; chunking required.")
+#                     chunks = []
+#                     start = 0
+#                     while start < len(input_ids):
+#                         end = start + context_window
+#                         chunk_tokens = input_ids[start:end]
+#                         chunk_text = tokenizer.decode(chunk_tokens).lstrip('<s>').rstrip('</s>')
+#                         chunks.append(chunk_text)
+#                         start += context_window - overlap
+#                 else:
+#                     chunks = [content]
 
-                # print('==============Print token length of each chunk================')
+#                 # print('==============Print token length of each chunk================')
                 
-                # for chunk in chunks:
-                #     tokens = tokenizer(chunk, return_offsets_mapping=True, truncation=False)
-                #     input_ids = tokens["input_ids"]
-                #     print(f"length of chunk text: {len(input_ids)}")
-                # print('==============================')
+#                 # for chunk in chunks:
+#                 #     tokens = tokenizer(chunk, return_offsets_mapping=True, truncation=False)
+#                 #     input_ids = tokens["input_ids"]
+#                 #     print(f"length of chunk text: {len(input_ids)}")
+#                 # print('==============================')
 
-                # -------------------------------
-                # Summarize and upload each chunk
-                # -------------------------------
-                for i, chunk_text in enumerate(chunks, start=1):
-                    tokens = tokenizer(chunk_text, return_offsets_mapping=True, truncation=False)
-                    input_ids = tokens["input_ids"]
+#                 # -------------------------------
+#                 # Summarize and upload each chunk
+#                 # -------------------------------
+#                 for i, chunk_text in enumerate(chunks, start=1):
+#                     tokens = tokenizer(chunk_text, return_offsets_mapping=True, truncation=False)
+#                     input_ids = tokens["input_ids"]
 
-                    summarized_text = remove_non_ascii_encode_decode(get_summary(chunk_text))
-                    persons_metadata, orgs_metadata = extract_persons_and_orgs(summarized_text)
+#                     summarized_text = remove_non_ascii_encode_decode(get_summary(chunk_text))
+#                     persons_metadata, orgs_metadata = extract_persons_and_orgs(summarized_text)
 
-                    # Derive destination keys
-                    # e.g. 2025-10-11/economy_general/filename.json ->
-                    #      2025-10-11/summarized/economy_general/filename.txt
-                    #      2025-10-11/summarized/economy_general/filename_metadata.txt
-                    parts = key.split("/", 1)
-                    date_dir, sub_path = parts
-                    summarized_sub_path = f"summarized/{sub_path}"
-                    base = summarized_sub_path.rsplit(".", 1)[0]
+#                     # Derive destination keys
+#                     # e.g. 2025-10-11/economy_general/filename.json ->
+#                     #      2025-10-11/summarized/economy_general/filename.txt
+#                     #      2025-10-11/summarized/economy_general/filename_metadata.txt
+#                     parts = key.split("/", 1)
+#                     date_dir, sub_path = parts
+#                     summarized_sub_path = f"summarized/{sub_path}"
+#                     base = summarized_sub_path.rsplit(".", 1)[0]
 
-                    if len(chunks) > 1:
-                        txt_key = f"{date_dir}/{base}_{i}.txt"
-                        meta_key = f"{date_dir}/{base}_{i}.metadata.json"
-                    else:
-                        txt_key = f"{date_dir}/{base}.txt"
-                        meta_key = f"{date_dir}/{base}.metadata.json"
+#                     if len(chunks) > 1:
+#                         txt_key = f"{date_dir}/{base}_{i}.txt"
+#                         meta_key = f"{date_dir}/{base}_{i}.metadata.json"
+#                     else:
+#                         txt_key = f"{date_dir}/{base}.txt"
+#                         meta_key = f"{date_dir}/{base}.metadata.json"
 
-                    # Metadata file
-                    metadata = {
-                        "title": title,
-                        "topic": topic,
-                        "publishedAt": published_at,
-                        "unix_time": unix_time,
-                        "summary": 'yes',
-                        "persons": persons_metadata,
-                        "organizations": orgs_metadata
-                    }
+#                     # Metadata file
+#                     metadata = {
+#                         "title": title,
+#                         "topic": topic,
+#                         "publishedAt": published_at,
+#                         "unix_time": unix_time,
+#                         "summary": 'yes',
+#                         "persons": persons_metadata,
+#                         "organizations": orgs_metadata
+#                     }
 
-                    # Upload summarized text
-                    s3.put_object(
-                        Bucket=dest_bucket,
-                        Key=txt_key,
-                        Body=summarized_text.encode("utf-8"),
-                        ContentType="text/plain"
-                    )
+#                     # Upload summarized text
+#                     s3.put_object(
+#                         Bucket=dest_bucket,
+#                         Key=txt_key,
+#                         Body=summarized_text.encode("utf-8"),
+#                         ContentType="text/plain"
+#                     )
 
-                    # Upload metadata
-                    s3.put_object(
-                        Bucket=dest_bucket,
-                        Key=meta_key,
-                        Body=json.dumps(metadata, ensure_ascii=False, indent=2).encode("utf-8"),
-                        ContentType="application/json"
-                    )
+#                     # Upload metadata
+#                     s3.put_object(
+#                         Bucket=dest_bucket,
+#                         Key=meta_key,
+#                         Body=json.dumps(metadata, ensure_ascii=False, indent=2).encode("utf-8"),
+#                         ContentType="application/json"
+#                     )
 
-                    #print(f"✅ Uploaded {txt_key}")
-                    print(f"✅ Uploaded {meta_key}")
+#                     #print(f"✅ Uploaded {txt_key}")
+#                     print(f"✅ Uploaded {meta_key}")
 
-            except json.JSONDecodeError:
-                print(f"⚠️ Skipping {key}: invalid JSON format.")
-            except Exception as e:
-                print(f"❌ Error processing {key}: {e}")
+#             except json.JSONDecodeError:
+#                 print(f"⚠️ Skipping {key}: invalid JSON format.")
+#             except Exception as e:
+#                 print(f"❌ Error processing {key}: {e}")
 
 
 def summarize_and_copy(date_prefix):
@@ -420,10 +368,9 @@ dest_bucket = os.environ.get("S3_DESTINATION")
 endpoint_name = os.environ.get("SAGE_TS_ENDPOINT")
 
 summarize_and_copy('2025-08-01')
-summarize_and_copy('2025-08-02')
+#summarize_and_copy('2025-08-02')
 summarize_and_copy('2025-08-03')
 summarize_and_copy('2025-08-04')
-#summarize_and_copy('2025-08-04')
 
 # summarize_and_copy('2025-09-01')
 # summarize_and_copy('2025-09-03')
