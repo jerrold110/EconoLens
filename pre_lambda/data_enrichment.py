@@ -1,9 +1,9 @@
 """
-In SAM environment variables are declared in template.yaml
-
-Using S3 client-side interaction as there only around 50 original article objects at each run
+Using S3 client-side interaction as there only around 50-100 original article objects at each run
 
 Keywords prioritise relevent information over volume. It is better to have no data than irrelevant data.
+
+There can be duplicate articles from different newsssources that will cause error during ingestion
 
 Metadata includes title of article for tracing RAG sources
 Metadata persons/orgs tags are lower-cased
@@ -28,16 +28,19 @@ import os
 from os.path import join, dirname
 from dotenv import load_dotenv
 
+import re
+import unicodedata
+
 # -------------------------------
 # Helpers functions
 # -------------------------------
 
 # Declare spacy and nltk variables once
-nlp = spacy.load('en_core_web_sm')
+nlp = spacy.load('en_core_web_md')
 stop_words = nlp.Defaults.stop_words  # spaCy's built-in stopwords set
 
 
-def extract_persons_and_orgs(text):
+def extract_persons_and_orgs(text:str):
     """
     Extract person and organization entities from text,
     return them as lowercase unique lists with stopwords removed.
@@ -47,20 +50,35 @@ def extract_persons_and_orgs(text):
 
     def clean(phrase):
         # Use spaCy tokenization and filter stopwords
-        tokens = [token.text.lower() for token in nlp(phrase) if token.text.lower() not in stop_words]
+        tokens = [token.text.lower().strip() for token in nlp(phrase) if token.text.lower() not in stop_words]
         return ' '.join(tokens)
+    
+    def is_valid(item: str):
+        """
+        Only allow values with alphabets or spaces
+        """
+        if not item:
+            return False
+        if len(item) < 2:  # remove single-character items
+            return False
+        if any(not (c.isalpha() or c.isspace()) for c in item):
+            return False
+        return True
 
     for ent in doc.ents:
         if ent.label_ == 'PERSON':
-            persons.add(clean(ent.text))
+            cleaned = clean(ent.text)
+            if is_valid(cleaned):
+                persons.add(cleaned)
         elif ent.label_ == 'ORG':
-            orgs.add(clean(ent.text))
+            cleaned = clean(ent.text)
+            if is_valid(cleaned):
+                orgs.add(cleaned)
 
     return list(persons), list(orgs)
 
 
-import re
-import unicodedata
+
 
 def clean_text_for_ingestion(text: str) -> str:
     """
@@ -77,25 +95,25 @@ def clean_text_for_ingestion(text: str) -> str:
     if not isinstance(text, str):
         text = str(text)
 
-    # 1️⃣ Normalize Unicode (e.g., smart quotes → normal quotes)
+    # Normalize Unicode (e.g., smart quotes → normal quotes)
     text = unicodedata.normalize("NFKC", text)
 
-    # 2️⃣ Remove control characters (ASCII 0–31, except \n and \t)
+    # Remove control characters (ASCII 0–31, except \n and \t)
     text = re.sub(r"[\x00-\x09\x0B\x0C\x0E-\x1F\x7F-\x9F]", " ", text)
 
-    # 3️⃣ Replace visible escape sequences (\n, \t, etc.) with spaces
+    # Replace visible escape sequences (\n, \t, etc.) with spaces
     text = re.sub(
         r"\\[abfnrtv'\"\\]|\\x[0-9A-Fa-f]{2}|\\u[0-9A-Fa-f]{4}|\\U[0-9A-Fa-f]{8}",
         " ",
         text,
     )
 
-    # 4️⃣ Normalize whitespace (collapse multiple spaces or newlines)
+    # Normalize whitespace (collapse multiple spaces or newlines)
     text = re.sub(r"[ \t]+", " ", text)     # collapse spaces/tabs
     text = re.sub(r"\s*\n\s*", "\n", text)  # tidy up newlines
     text = re.sub(r"\n{3,}", "\n\n", text)  # limit multiple blank lines
 
-    # 5️⃣ Strip leading/trailing whitespace
+    # Strip leading/trailing whitespace
     text = text.strip()
 
     return text
@@ -138,22 +156,30 @@ def copy_json_files_from_s3(date_prefix):
                 content = clean_text_for_ingestion(data.get("content"))
                 persons_metadata, orgs_metadata = extract_persons_and_orgs(content)
                 published_at = data.get("publishedAt")
-                topic = data.get("topic")
+                topic = data.get("topic") # topic only consists of _ and a-z
                 title = data.get("title")
+                title = re.sub(r'[^a-zA-Z0-9\s]', '', title) # symbols screw the metadata
                 dt = datetime.fromisoformat(published_at.replace("Z", "+00:00"))
                 unix_time = int(dt.timestamp())
+
+                if len(persons_metadata) > 20 or len(orgs_metadata) > 20:
+                    print(f"⚠️ Skipping {key}: Too many entities in metadata")
+                    continue
 
                 # Build destination path components
                 # Example:
                 # 2025-10-11/economy_general/filename.json
                 # → 2025-10-11/original/economy_general/filename.txt
-                parts = key.split("/", 1)
+                parts = key.split("/", 2)
                 if len(parts) < 2:
                     print(f"⚠️ Skipping {key}: unexpected key format.")
                     continue
 
                 date_prefix_dir = parts[0] # e.g., "2025-10-11"
-                sub_path = parts[1] # e.g., "economy_general/filename.json"
+                
+                sub_path = parts[2] # e.g., "news_article_title.json"
+                sub_path = parts[1] + "/" + sub_path.replace("/", "") # some paths(titles) have / causing nested folders
+                # Remove symbols from sub_path
                 sub_path_txt = sub_path.replace(".json", ".txt")
                 sub_path_metadata = sub_path.replace(".json", ".txt.metadata.json")
 
@@ -178,7 +204,6 @@ def copy_json_files_from_s3(date_prefix):
                         "topic": topic,
                         "publishedAt": published_at,
                         "unix_time": unix_time,
-                        "summary": 'no',
                         "persons": persons_metadata,
                         "organizations": orgs_metadata
                     }
@@ -369,8 +394,8 @@ endpoint_name = os.environ.get("SAGE_TS_ENDPOINT")
 
 summarize_and_copy('2025-08-01')
 #summarize_and_copy('2025-08-02')
-summarize_and_copy('2025-08-03')
-summarize_and_copy('2025-08-04')
+#summarize_and_copy('2025-08-03')
+#summarize_and_copy('2025-08-04')
 
 # summarize_and_copy('2025-09-01')
 # summarize_and_copy('2025-09-03')

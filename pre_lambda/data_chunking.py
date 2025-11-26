@@ -22,7 +22,9 @@ from dotenv import load_dotenv
 from langchain_experimental.text_splitter import SemanticChunker
 from langchain_aws import BedrockEmbeddings
 # amazon.titan-embed-text-v1
-_embeddings = BedrockEmbeddings(model_id="amazon.titan-embed-text-v2:0")
+# https://huggingface.co/amazon/Titan-text-embeddings-v2 
+# https://us-east-1.console.aws.amazon.com/bedrock/home?region=us-east-1#/model-catalog/serverless/amazon.titan-embed-text-v2:0
+_embeddings = BedrockEmbeddings(model_id="amazon.titan-embed-text-v2:0") # lightweight and effective  
 _Semchunker = SemanticChunker(_embeddings, breakpoint_threshold_type='percentile', breakpoint_threshold_amount=96) # 1% difference from default
 
 def _chunk_text(document_text:str, key:str) -> list:
@@ -55,18 +57,10 @@ def copy_metadata_for_chunk(client,
                           dest_bucket, 
                           document_key,
                           chunk_doc_key):
-    print(document_key)
-    print(chunk_doc_key)
     
     metadata_key = document_key.replace(".txt", ".txt.metadata.json")
     chunk_metadata_key = chunk_doc_key.replace(".txt", ".txt.metadata.json")
-    print(metadata_key)
-    print(chunk_metadata_key)
-    exit(0)
 
-    # print(metadata_key)
-    # print(chunk_metadata_key)
-    # exit(0)
     response = client.get_object(Bucket=source_bucket, Key=metadata_key)
 
     try:
@@ -160,7 +154,6 @@ def process_doc_and_metadata(date_prefix, source_bucket, dest_bucket):
                 
             # Chunk and process text file (document)
             elif key.endswith(".txt"):
-                print("TXT")
                 chunk_and_copy(s3, source_bucket, dest_bucket, key)
                 print(f"✅✅ Processed {key}")
                 
@@ -183,8 +176,8 @@ load_dotenv(dotenv_path)
 source_bucket = os.environ.get("S3_DESTINATION")
 dest_bucket = os.environ.get("S3_DESTINATION_1")
 
-#action('2025-08-01')
-action('2025-08-02')
+action('2025-08-01')
+#action('2025-08-02')
 #summarize_and_copy('2025-08-03')
 #summarize_and_copy('2025-08-04')
 
