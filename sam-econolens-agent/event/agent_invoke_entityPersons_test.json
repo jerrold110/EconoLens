@@ -12,8 +12,16 @@
       "type": "string",
       "value": "2025-08-01"
     },
-    {"name": "entity", "type": "string", "value": "Federal Reserve"},
-    {"name": "query", "type": "string", "value": "federal reserve"}
+    {
+      "name": "entity",
+      "type": "string",
+      "value": "Jerome Powell"
+    },
+    {
+      "name": "query",
+      "type": "string",
+      "value": "what did jerome do in August 2025"
+    }
   ],
   "sessionId": "975373241930390",
   "agent": {

@@ -114,7 +114,7 @@ def query_topic_person(start_date_str, end_date_str, entity, query, chunks_per_d
                         # Keyword filters
                         {
                             'listContains': {
-                                'key': 'organizations',
+                                'key': 'persons',
                                 'value': entity.lower()
                             }
                         }
@@ -149,7 +149,6 @@ def lambda_handler(event, context):
     """
     
     """
-    
 
     params = event.get('parameters')
     print("input parameters:")
@@ -197,7 +196,10 @@ def lambda_handler(event, context):
     print(action_response)
     return action_response
 
-# print(query_topic_labor_market("2025-08-01",
-#                             "2025-08-02",
-#                             'Events about labor markets, employment, unemployment and their effects on the economy'
-#                             ))
+
+# print(query_topic_person('2025-08-01',
+#                          '2025-08-31',
+#                          'Jerome Powell',
+#                          'what did jerome powell do',
+#                          100,
+#                          100))

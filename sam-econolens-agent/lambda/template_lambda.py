@@ -16,7 +16,7 @@ def date_to_unix(date_str:str, is_end:bool=False) -> int:
         raise AssertionError(f"Date string '{date_str}' does not follow %Y-%m-%d format.")
     
     unix = dt.timestamp()
-    # print(unix)
+    print(unix)
     return unix
 
 def days_difference(start_date_str, end_date_str) -> int:
@@ -26,13 +26,14 @@ def days_difference(start_date_str, end_date_str) -> int:
     sd = datetime.strptime(start_date_str, '%Y-%m-%d')
     ed = datetime.strptime(end_date_str, '%Y-%m-%d')
 
+
     difference = ed - sd
     number_of_days = difference.days
 
     return number_of_days + 1
 
 
-def query_date_topic(start_date_str, end_date_str, topic, chunks_per_day=4):
+def query_date_topic(start_date_str, end_date_str, chunks_per_day=5):
     """
     Query data based on prompt and metadata filters
     Rerank data
@@ -41,14 +42,6 @@ def query_date_topic(start_date_str, end_date_str, topic, chunks_per_day=4):
     """
     start_unixtime = date_to_unix(start_date_str)
     end_unixtime = date_to_unix(end_date_str)
-    
-    assert topic in ["consumer_behavior",
-                     "corporate",
-                     "economy_general",
-                     "economy_long_term",
-                     "government_and_policy",
-                     "inflation",
-                     "labor_market"]
 
     day_diff = days_difference(start_date_str, end_date_str)
     n_chunks = day_diff * chunks_per_day
@@ -61,7 +54,7 @@ def query_date_topic(start_date_str, end_date_str, topic, chunks_per_day=4):
     response = bedrock_agent_runtime.retrieve(
         knowledgeBaseId=kb_id,
         retrievalQuery={
-            'text': 'economy'
+            'text': query
         },
         retrievalConfiguration={
             'vectorSearchConfiguration': {
@@ -77,32 +70,31 @@ def query_date_topic(start_date_str, end_date_str, topic, chunks_per_day=4):
                             }
                         },
                         {
-                            'lessThan': {
+                            'lessThanOrEquals': {
                                 'key': 'unix_time',
                                 'value': end_unixtime
                             }
                         },
                         # Topic filters
-                        {
-                            'stringContains': {
-                                'key': 'topic',
-                                'value': topic
-                            }
-                        },
-                        # Keyword filters
                         # {
-                        #     'listContains': {
-                        #         'key': 'persons',
-                        #         'value': "biden"
+                        #     'stringContains': {
+                        #         'key': 'topic',
+                        #         'value': topic
                         #     }
                         # },
+                        # Keyword filters
+                        {
+                            'listContains': {
+                                'key': 'persons',
+                                'value': person.lower()
+                            }
+                        },
                         # {
                         #     'listContains': {
                         #         'key': 'organizations',
-                        #         'value': "white house"
+                        #         'value': instutition.lower()
                         #     }
                         # }
-
                     ]
                 },
                 # aws bedrock get-foundation-model --model-identifier cohere.rerank-v3-5:0
@@ -123,11 +115,15 @@ def query_date_topic(start_date_str, end_date_str, topic, chunks_per_day=4):
     for i in response['retrievalResults']:
         print(i, "\n\n")
 
-sd = '2025-07-01'
-ed = '2025-07-31'
+sd = '2025-08-01'
+ed = '2025-08-31'
 topic = 'inflation'
-kb_id = "7TJCJ0AADQ"
-query_date_topic(sd, ed, topic)
+person = 'Jerome Powell'
+query = "what did jerome do in August 2025"
+
+kb_id = "QS2RHC3IUW"
+
+query_date_topic(sd, ed)
 
 def lambda_handler(event, context):
     """
