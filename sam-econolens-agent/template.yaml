@@ -9,7 +9,15 @@ Parameters:
     Type: String
     Default: EconolensAgent
     Description: Name for the Bedrock Agent
-
+  Environment:
+    Type: String
+    Default: Dev
+    Description: The environment the resources are deployed into
+    AllowedValues:
+    - Dev
+    - Stag
+    - Prod
+    
 Globals:
   Function:
     Timeout: 300 # seconds
@@ -26,11 +34,18 @@ Globals:
         RERANK_CHUNK_COUNT: 10 # and number of returned chunks
 # https://repost.aws/questions/QUwyrhlEugTH-DV_dH5lG3Ag/issue-with-bedrock-agents-and-lambda-function-model-timeout-error
 Resources:
+  # --- AGENT ALIAS ---
+  AgentAlias:
+    Type: AWS::Bedrock::AgentAlias
+    Properties:
+      AgentAliasName: !Sub "${AgentName}_Guardrail_${Environment}"
+      AgentId: !GetAtt BedrockAgent.AgentId
+      Description: !Sub "${AgentName}"
   # --- BEDROCK AGENT ---
   BedrockAgent:
     Type: AWS::Bedrock::Agent
     Properties:
-      AgentName: !Ref AgentName # this is working
+      AgentName: !Sub "${AgentName}_${Environment}"
       AgentResourceRoleArn: !GetAtt BedrockAgentExecutionRole.Arn
       Description: "Agent for economic reporting and question answering. Required: Time-period dates (inclusive). Optional: Topic, entity keyword"
       # https://docs.aws.amazon.com/bedrock/latest/userguide/models-supported.html
@@ -52,8 +67,14 @@ Resources:
 
         Time Period Requirements for all cases:
         - All requests require a time period (start_date_str and end_date_str)
-        - Time range between 1 day and 1 year
         - If unspecified, extract from context or prompt: "Please specify the start and end dates (YYYY-MM-DD format) for your request."
+
+        Think out loud step-by-step:
+        Decide whether this is a report generation or question answering request
+        State which tool(s) you're using and why
+        Call appropriate tool(s) with correct parameters
+        Provide direct, comprehensive answer using ONLY retrieved data
+        If data is insufficient, state clearly what's missing
 
         Available Tools: 
 
@@ -142,9 +163,7 @@ Resources:
         Examples: "Federal Reserve", "World Bank", "Tesla", "Goldman Sachs"
         Tool: GetEntityInstitution
 
-
         C. Clear Topic Category
-
         Consumer-related: GetTopicConsumerBehavior
         Business/corporate: GetTopicCorporate
         General economy/GDP: GetTopicEconomyGeneral
@@ -154,7 +173,6 @@ Resources:
         Jobs/wages: GetTopicLaborMarket
 
         D. Multi-Category or Unclear
-
         If question spans multiple topics (e.g., "How did inflation affect consumer behavior?"):
         Use multiple relevant tools
         Synthesize findings
@@ -190,25 +208,8 @@ Resources:
         Do you have a specific question about a particular economic aspect?
         Also, please specify the time period (start and end dates) for your request."
 
-        Retrieve and Respond:
+        
 
-        State which tool(s) you're using and why
-        Call appropriate tool(s) with correct parameters
-        Provide direct, comprehensive answer using ONLY retrieved data
-        Include relevant numbers, dates, and specifics
-        If data is insufficient, state clearly what's missing
-
-        Process Transparency
-        Before each action, briefly state:
-        "This is a [report generation / question answering] request"
-        "Time period: [dates]"
-        "Using tool(s): [tool names] because [brief reason]"
-        "Parameters: [list parameters]"
-
-        After retrieval:
-
-        Confirm what data was found
-        Note if any categories returned no results
 
       # --- Guardrail ---
       GuardrailConfiguration:
@@ -441,20 +442,13 @@ Resources:
       #     InferenceConfiguration:
       #       MaximumLength: 2048 # Original should be
       #     BasePromptTemplate: |
-  
-  # --- AGENT ALIAS ---
-  # AgentAlias:
-  #   Type: AWS::Bedrock::AgentAlias
-  #   Properties:
-  #     AgentAliasName: !Sub "${AgentName}"
-  #     AgentId: !GetAtt BedrockAgent.AgentId
-  #     Description: !Sub "${AgentName}"
 
   # --- GUARDRAIL ---
+  
   AgentGuardrail:
     Type: AWS::Bedrock::Guardrail
     Properties:
-      Name: EconolensAgent_guardrail
+      Name: !Sub "${AgentName}_Guardrail_${Environment}"
       Description: |
         This Guardrail is for the Econolens AI Agent and blocks prompts about non-american economies, and might include grounding checks
       BlockedInputMessaging: The input contains blocked content
@@ -470,11 +464,11 @@ Resources:
               - Generate a report for the Chinese Economy in 2025
               - What are the driving factors of Inflation in European markets?
               - What are the differences in labor market trends in Germany between 2024 and 2025
-              
+    
   MainGuardrailVersion:
     Type: AWS::Bedrock::GuardrailVersion
     Properties:
-      Description: A sample description of this guardrail version
+      Description: A guardrail version
       GuardrailIdentifier: !GetAtt AgentGuardrail.GuardrailId
             
 
@@ -482,12 +476,13 @@ Resources:
   # We explored "arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:agent/${AgentName}"
   # Instead of the ARN -> !GetAtt BedrockAgent.AgentArn
   # AWS::Lambda::Permission resource grants an AWS service or another account permission to use a function https://docs.aws.amazon.com/AWSCloudFormation/latest/TemplateReference/aws-resource-lambda-permission.html
+  # FunctionName is the name or ARN of the Lambda function. Principal is the AWS service that invokes the function
   # We are not using layers in these lambda functions
   
-
   RetrieveTopicConsumerBehavior:
     Type: AWS::Serverless::Function
     Properties:
+      FunctionName: !Sub "RetrieveTopicConsumerBehavior-${Environment}"
       Role: !GetAtt AgentFunctionsRole.Arn
       CodeUri: lambda/retrieve_topic/consumer_behavior/
       Handler: app.lambda_handler
@@ -497,15 +492,15 @@ Resources:
   AgentFunctionsForRetrieveTopicCBRoleBedrock:
     Type: AWS::Lambda::Permission
     Properties:
-      FunctionName: !Ref RetrieveTopicConsumerBehavior
+      FunctionName: !Sub "RetrieveTopicConsumerBehavior-${Environment}"
       Action: lambda:InvokeFunction
       Principal: bedrock.amazonaws.com
-      #SourceAccount: !Ref AWS::AccountId
       SourceArn: !GetAtt BedrockAgent.AgentArn
 
   RetrieveTopicCorporate:
     Type: AWS::Serverless::Function
     Properties:
+      FunctionName: !Sub "RetrieveTopicCorporate-${Environment}"
       Role: !GetAtt AgentFunctionsRole.Arn
       CodeUri: lambda/retrieve_topic/corporate/
       Handler: app.lambda_handler
@@ -515,7 +510,7 @@ Resources:
   AgentFunctionsForRetrieveTopicCorporateRoleBedrock:
     Type: AWS::Lambda::Permission
     Properties:
-      FunctionName: !Ref RetrieveTopicCorporate
+      FunctionName: !Sub "RetrieveTopicCorporate-${Environment}"
       Action: lambda:InvokeFunction
       Principal: bedrock.amazonaws.com
       #SourceAccount: !Ref AWS::AccountId
@@ -524,6 +519,7 @@ Resources:
   RetrieveTopicEconomyGeneral:
     Type: AWS::Serverless::Function
     Properties:
+      FunctionName: !Sub "RetrieveTopicEconomyGeneral-${Environment}"
       Role: !GetAtt AgentFunctionsRole.Arn
       CodeUri: lambda/retrieve_topic/economy_general/
       Handler: app.lambda_handler
@@ -533,7 +529,7 @@ Resources:
   AgentFunctionsForRetrieveTopicEGBedrock:
     Type: AWS::Lambda::Permission
     Properties:
-      FunctionName: !Ref RetrieveTopicEconomyGeneral
+      FunctionName: !Sub "RetrieveTopicEconomyGeneral-${Environment}"
       Action: lambda:InvokeFunction
       Principal: bedrock.amazonaws.com
       #SourceAccount: !Ref AWS::AccountId
@@ -542,6 +538,7 @@ Resources:
   RetrieveTopicEconomyLongTerm:
     Type: AWS::Serverless::Function
     Properties:
+      FunctionName: !Sub "RetrieveTopicEconomyLongTerm-${Environment}"
       Role: !GetAtt AgentFunctionsRole.Arn
       CodeUri: lambda/retrieve_topic/economy_long_term/
       Handler: app.lambda_handler
@@ -551,7 +548,7 @@ Resources:
   AgentFunctionsForRetrieveTopicELTBedrock:
     Type: AWS::Lambda::Permission
     Properties:
-      FunctionName: !Ref RetrieveTopicEconomyLongTerm
+      FunctionName: !Sub "RetrieveTopicEconomyLongTerm-${Environment}"
       Action: lambda:InvokeFunction
       Principal: bedrock.amazonaws.com
       #SourceAccount: !Ref AWS::AccountId
@@ -560,6 +557,7 @@ Resources:
   RetrieveTopicGovernmentAndPolicy:
     Type: AWS::Serverless::Function
     Properties:
+      FunctionName: !Sub "RetrieveTopicGovernmentAndPolicy-${Environment}"
       Role: !GetAtt AgentFunctionsRole.Arn
       CodeUri: lambda/retrieve_topic/government_and_policy/
       Handler: app.lambda_handler
@@ -569,7 +567,7 @@ Resources:
   AgentFunctionsForRetrieveTopicGAPBedrock:
     Type: AWS::Lambda::Permission
     Properties:
-      FunctionName: !Ref RetrieveTopicGovernmentAndPolicy
+      FunctionName: !Sub "RetrieveTopicGovernmentAndPolicy-${Environment}"
       Action: lambda:InvokeFunction
       Principal: bedrock.amazonaws.com
       #SourceAccount: !Ref AWS::AccountId
@@ -578,6 +576,7 @@ Resources:
   RetrieveTopicInflation:
     Type: AWS::Serverless::Function
     Properties:
+      FunctionName: !Sub "RetrieveTopicInflation-${Environment}"
       Role: !GetAtt AgentFunctionsRole.Arn
       CodeUri: lambda/retrieve_topic/inflation/
       Handler: app.lambda_handler
@@ -587,7 +586,7 @@ Resources:
   AgentFunctionsForRetrieveTopicInflationBedrock:
     Type: AWS::Lambda::Permission
     Properties:
-      FunctionName: !Ref RetrieveTopicInflation
+      FunctionName: !Sub "RetrieveTopicInflation-${Environment}"
       Action: lambda:InvokeFunction
       Principal: bedrock.amazonaws.com
       #SourceAccount: !Ref AWS::AccountId
@@ -596,6 +595,7 @@ Resources:
   RetrieveTopicLaborMarket:
     Type: AWS::Serverless::Function
     Properties:
+      FunctionName: !Sub "RetrieveTopicLaborMarket-${Environment}"
       Role: !GetAtt AgentFunctionsRole.Arn
       CodeUri: lambda/retrieve_topic/labor_market/
       Handler: app.lambda_handler
@@ -605,7 +605,7 @@ Resources:
   AgentFunctionsForRetrieveTopLMRoleBedrock:
     Type: AWS::Lambda::Permission
     Properties:
-      FunctionName: !Ref RetrieveTopicLaborMarket
+      FunctionName: !Sub "RetrieveTopicLaborMarket-${Environment}"
       Action: lambda:InvokeFunction
       Principal: bedrock.amazonaws.com
       #SourceAccount: !Ref AWS::AccountId
@@ -614,6 +614,7 @@ Resources:
   RetrieveEntityInstitution:
     Type: AWS::Serverless::Function
     Properties:
+      FunctionName: !Sub "RetrieveTopicEntityInstitution-${Environment}"
       Role: !GetAtt AgentFunctionsRole.Arn
       CodeUri: lambda/retrieve_entity/institution/
       Handler: app.lambda_handler
@@ -623,7 +624,7 @@ Resources:
   AgentFunctionsForRetrieveEntityInstitution:
     Type: AWS::Lambda::Permission
     Properties:
-      FunctionName: !Ref RetrieveEntityInstitution
+      FunctionName: !Sub "RetrieveTopicEntityInstitution-${Environment}"
       Action: lambda:InvokeFunction
       Principal: bedrock.amazonaws.com
       SourceArn: !GetAtt BedrockAgent.AgentArn
@@ -631,6 +632,7 @@ Resources:
   RetrieveEntityPerson:
     Type: AWS::Serverless::Function
     Properties:
+      FunctionName: !Sub "RetrieveTopicEntityPerson-${Environment}"
       Role: !GetAtt AgentFunctionsRole.Arn
       CodeUri: lambda/retrieve_entity/person/
       Handler: app.lambda_handler
@@ -640,7 +642,7 @@ Resources:
   AgentFunctionsForRetrieveEntityPerson:
     Type: AWS::Lambda::Permission
     Properties:
-      FunctionName: !Ref RetrieveEntityPerson
+      FunctionName: !Sub "RetrieveTopicEntityPerson-${Environment}"
       Action: lambda:InvokeFunction
       Principal: bedrock.amazonaws.com
       #SourceAccount: !Ref AWS::AccountId
@@ -649,6 +651,7 @@ Resources:
   RetrieveQueryOnly:
     Type: AWS::Serverless::Function
     Properties:
+      FunctionName: !Sub "RetrieveQueryOnly-${Environment}"
       Role: !GetAtt AgentFunctionsRole.Arn
       CodeUri: lambda/retrieve_query_only/
       Handler: app.lambda_handler
@@ -658,7 +661,7 @@ Resources:
   AgentFunctionsForRetrieveQueryOnly:
     Type: AWS::Lambda::Permission
     Properties:
-      FunctionName: !Ref RetrieveQueryOnly
+      FunctionName: !Sub "RetrieveQueryOnly-${Environment}"
       Action: lambda:InvokeFunction
       Principal: bedrock.amazonaws.com
       #SourceAccount: !Ref AWS::AccountId

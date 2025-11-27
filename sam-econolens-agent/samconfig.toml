@@ -19,6 +19,7 @@ confirm_changeset = true
 resolve_s3 = true
 s3_prefix = "sam-econolens-agent"
 image_repositories = []
+parameter_overrides = "AgentName=\"EconolensAgent\" Environment=\"Dev\""
 
 [default.package.parameters]
 resolve_s3 = true
