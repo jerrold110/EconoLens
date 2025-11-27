@@ -2,7 +2,7 @@ AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
 Description: >
   sam-econolens-agent
-  AI components of the Econolens project consisting of agent, action groups, lambdas, guardrail, agent alias
+  AI components of the Econolens project consisting of IAM, Agent, Action groups & Lambdas, guardrail, Agent alias
 
 Parameters:
   AgentName:
@@ -13,15 +13,16 @@ Parameters:
 Globals:
   Function:
     Timeout: 300 # seconds
-    MemorySize: 512 # MB
+    MemorySize: 1024 # MB
     Tracing: Active
     Runtime: python3.11
     Architectures:
       - x86_64
     Environment:
       Variables:
-        BEDROCK_KNOWLEDGE_BASE_ID: HHY7OO1DZR # Bedrock KB ID, switches every time I restart the KB
-        RETRIEVE_CHUNK_PER_DAY_COUNT: 5
+        BEDROCK_KNOWLEDGE_BASE_ID: TPBNZDX8VZ # Bedrock KB ID, switches every time I restart the KB
+        # Max returned in 1 call is 100, more requires pagination and nextToken
+        RETRIEVE_CHUNK_PER_DAY_COUNT: 5 
         RERANK_CHUNK_COUNT: 100 # and number of returned chunks
 # https://repost.aws/questions/QUwyrhlEugTH-DV_dH5lG3Ag/issue-with-bedrock-agents-and-lambda-function-model-timeout-error
 Resources:
@@ -483,12 +484,12 @@ Resources:
   
   
   # --- AGENT ALIAS ---
-  AgentAlias:
-    Type: AWS::Bedrock::AgentAlias
-    Properties:
-      AgentAliasName: !Sub "${AgentName}"
-      AgentId: !GetAtt BedrockAgent.AgentId
-      Description: !Sub "${AgentName}"
+  # AgentAlias:
+  #   Type: AWS::Bedrock::AgentAlias
+  #   Properties:
+  #     AgentAliasName: !Sub "${AgentName}"
+  #     AgentId: !GetAtt BedrockAgent.AgentId
+  #     Description: !Sub "${AgentName}"
 
   # --- GUARDRAIL ---
   AgentGuardrail:

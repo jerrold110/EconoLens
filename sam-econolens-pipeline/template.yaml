@@ -175,7 +175,7 @@ Resources:
       Role: !GetAtt EconolensDataChunkRole.Arn
       # increased for text embedding model, langchain library
       Timeout: 900
-      MemorySize: 3008 #4096
+      MemorySize: 3008 # max without asking for quote increase, working
     Metadata:
       Dockerfile: Dockerfile
       DockerContext: ./functions/pipeline_3_data_chunking

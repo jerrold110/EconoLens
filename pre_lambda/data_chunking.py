@@ -8,8 +8,6 @@ Metadata persons/orgs tags are lower-cased
 import boto3
 from botocore.exceptions import ClientError
 
-from dotenv import load_dotenv
-
 import json, os, time
 from datetime import datetime
 from os.path import join, dirname
@@ -125,7 +123,7 @@ def chunk_and_copy(client,
 # Main function
 # -------------------------------
 
-def process_doc_and_metadata(date_prefix, source_bucket, dest_bucket):
+def process_doc_and_metadata(date_prefix):
     """
     Copies JSON files from `source_bucket` whose keys start with `date_prefix`
     to `dest_bucket`, extracting content and metadata separately
