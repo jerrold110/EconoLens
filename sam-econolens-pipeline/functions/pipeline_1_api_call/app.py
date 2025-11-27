@@ -7,7 +7,7 @@ import json
 from datetime import datetime, timedelta
 import os
 
-bucket_name = os.environ.get("S3_SOURCE")
+bucket_name = os.environ.get("S3_STAGE")
 
 # API key for GNews from AWS secrets
 def get_gnews_api_key():

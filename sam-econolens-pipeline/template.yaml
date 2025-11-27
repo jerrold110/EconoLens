@@ -1,3 +1,5 @@
+# Remember to build with sam build --use-container --parallel, 
+# Container images are created locally https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/using-sam-cli-build.html
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
 Description: >
@@ -7,17 +9,19 @@ Description: >
 # More info about Globals: https://github.com/awslabs/serverless-application-model/blob/master/docs/globals.rst
 Globals:
   Function:
-    Timeout: 300 # seconds
+    #Timeout: 300 # seconds
     Environment:
       Variables:
-        S3_SOURCE: econolens-staging-area
-        S3_DESTINATION: econolens-data-enriched
-        BEDROCK_KB_ID: J689XHGM6B
-        BEDROCK_KB_DATASOURCE_ID: SVQMEHRJIE
+        S3_STAGE: econolens-staging-area
+        S3_ENRICH: econolens-data-enriched
+        S3_CHUNK: econolens-data-chunked
+        # Change this when KB restarts
+        BEDROCK_KB_ID: J689XHGM6B 
+        BEDROCK_KB_DATASOURCE_ID: ABC123
 
 Resources:
   # IAM roles created with AWS managed IAM policies
-  EconolensAPICALLANDSTORERole:
+  EconolensAPICallRole:
     Type: AWS::IAM::Role
     Properties:
       AssumeRolePolicyDocument:
@@ -33,7 +37,7 @@ Resources:
         - arn:aws:iam::aws:policy/AmazonS3FullAccess
         - arn:aws:iam::aws:policy/SecretsManagerReadWrite
   
-  EconolensDATAENRICHMENTRole:
+  EconolensDataEnrichmentRole:
     Type: AWS::IAM::Role
     Properties:
       AssumeRolePolicyDocument:
@@ -48,7 +52,24 @@ Resources:
         - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
         - arn:aws:iam::aws:policy/AmazonS3FullAccess
 
-  EconolensKBSYNCRole:
+  # Pipeline 3 invokes the embedding model on bedrock, access S3
+  EconolensDataChunkRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action: "sts:AssumeRole"
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        - arn:aws:iam::aws:policy/AmazonS3FullAccess
+        - arn:aws:iam::aws:policy/AmazonBedrockFullAccess
+
+  EconolensKBIngestRole:
     Type: AWS::IAM::Role
     Properties:
       AssumeRolePolicyDocument:
@@ -80,6 +101,7 @@ Resources:
                 Resource: '*' 
 
   # Infrastructure
+  # Default timeout is 300 seconds. Longer functions is the full 900 seconds (15 mins)
   NewsPipelineStateMachine:
     Type: AWS::Serverless::StateMachine
     Properties:
@@ -87,8 +109,9 @@ Resources:
       DefinitionSubstitutions:
         APICallFunctionArn: !GetAtt APICallFunction.Arn
         DataEnrichmentFunctionArn: !GetAtt DataEnrichmentFunction.Arn
+        DataChunkFunctionArn: !GetAtt DataChunkFunction.Arn
         BedrockKBIngestFunctionArn: !GetAtt BedrockKBIngestFunction.Arn
-      # Run at 10 am everyday. Use contexte data from EB scheduler not SF
+      # Run at 10 am everyday. Use context data from EventBridge scheduler not StepFunctions
       # https://docs.aws.amazon.com/step-functions/latest/dg/input-output-contextobject.html#contextobject-format
       # https://docs.aws.amazon.com/scheduler/latest/UserGuide/managing-schedule-context-attributes.html
       Events:
@@ -101,21 +124,28 @@ Resources:
             ScheduleExpressionTimezone: "America/Los_Angeles"
             Input: '{"batch_date": "<aws.scheduler.scheduled-time>"}'
       # SAM policy templates: https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/serverless-policy-templates.html
+      # Gives the State machine permission to invoke
       Policies: 
         - LambdaInvokePolicy:
             FunctionName: !Ref APICallFunction
         - LambdaInvokePolicy:
             FunctionName: !Ref DataEnrichmentFunction
         - LambdaInvokePolicy:
+            FunctionName: !Ref DataChunkFunction
+        - LambdaInvokePolicy:
             FunctionName: !Ref BedrockKBIngestFunction
 
+  # This is not the best syntax for defining lambda container images. Specify the handler function
+  # https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/serverless-sam-cli-using-build.html
   APICallFunction:
     Type: AWS::Serverless::Function # More info about Function Resource: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#awsserverlessfunction
     Properties:
       PackageType: Image
       Architectures:
         - x86_64
-      Role: !GetAtt EconolensAPICALLANDSTORERole.Arn
+      Role: !GetAtt EconolensAPICallRole.Arn
+      Timeout: 300
+      MemorySize: 256
     Metadata:
       Dockerfile: Dockerfile
       DockerContext: ./functions/pipeline_1_api_call
@@ -127,12 +157,28 @@ Resources:
       PackageType: Image
       Architectures:
         - x86_64
-      Role: !GetAtt EconolensDATAENRICHMENTRole.Arn
-      # increasedfor loading en_core_web_sm model. default is 128 MB https://docs.aws.amazon.com/lambda/latest/dg/configuration-memory.html#configuration-memory-use-cases 
-      MemorySize: 512
+      Role: !GetAtt EconolensDataEnrichmentRole.Arn
+      Timeout: 300
+      # increasedfor loading spacy library, en_core_web_md model. default is 128 MB https://docs.aws.amazon.com/lambda/latest/dg/configuration-memory.html#configuration-memory-use-cases 
+      MemorySize: 2048
     Metadata:
       Dockerfile: Dockerfile
       DockerContext: ./functions/pipeline_2_data_enrichment
+      DockerTag: python3.11-v1
+
+  DataChunkFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      PackageType: Image
+      Architectures:
+        - x86_64
+      Role: !GetAtt EconolensDataChunkRole.Arn
+      # increased for text embedding model, langchain library
+      Timeout: 900
+      MemorySize: 3008 #4096
+    Metadata:
+      Dockerfile: Dockerfile
+      DockerContext: ./functions/pipeline_3_data_chunking
       DockerTag: python3.11-v1
 
   BedrockKBIngestFunction:
@@ -141,34 +187,15 @@ Resources:
       PackageType: Image
       Architectures:
         - x86_64
-      Role: !GetAtt EconolensKBSYNCRole.Arn
+      Role: !GetAtt EconolensKBIngestRole.Arn
     Metadata:
       Dockerfile: Dockerfile
-      DockerContext: ./functions/pipeline_3_bedrockKB_ingest
+      DockerContext: ./functions/pipeline_4_bedrockKB_ingest
       DockerTag: python3.11-v1
   
-Outputs:
-  APICallFunctionArn:
-    Description: ARN of the API Call Lambda function
-    Value: !GetAtt APICallFunction.Arn
+# Outputs:
+#   APICallFunctionArn:
+#     Description: ARN of the API Call Lambda function
+#     Value: !GetAtt APICallFunction.Arn
 
-  DataEnrichmentFunctionArn:
-    Description: ARN of the Data Enrichment Lambda function
-    Value: !GetAtt DataEnrichmentFunction.Arn
-
-  BedrockKBIngestFunctionArn:
-    Description: ARN of the Bedrock KB Ingest Lambda function
-    Value: !GetAtt BedrockKBIngestFunction.Arn
-
-  EconolensAPICALLANDSTORERoleArn:
-    Description: ARN of the API Call Lambda Role
-    Value: !GetAtt EconolensAPICALLANDSTORERole.Arn
-
-  EconolensDATAENRICHMENTRoleArn:
-    Description: ARN of the Data Enrichment Lambda Role
-    Value: !GetAtt EconolensDATAENRICHMENTRole.Arn
-
-  EconolensKBSYNCRoleArn:
-    Description: ARN of the Bedrock KB Sync Lambda Role
-    Value: !GetAtt EconolensKBSYNCRole.Arn
 

@@ -1,0 +1,4 @@
+boto3==1.40.50
+botocore==1.40.50
+langchain-experimental==0.3.4
+langchain-aws==0.2.35

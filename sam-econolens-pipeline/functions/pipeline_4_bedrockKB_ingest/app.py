@@ -1,3 +1,10 @@
+"""
+Synchronise job for the particular S3 data source in the Bedrock knowledge base
+Using this because the ingest_knowledge_base_documents direct ingestion API is bugged when doing direct ingestion 
+with metadata files from S3
+https://github.com/boto/boto3/discussions/4574
+"""
+
 import boto3
 from botocore.exceptions import ClientError, NoCredentialsError, EndpointConnectionError, BotoCoreError
 
@@ -7,7 +14,6 @@ import os
 
 knowledge_base_id = os.getenv("BEDROCK_KB_ID")
 data_source_id = os.getenv("BEDROCK_KB_DATASOURCE_ID")
-# bedrock_apikey = os.getenv("BEDROCK_TOKEN")
 
 def sync_data_source():
     """
@@ -33,7 +39,7 @@ def sync_data_source():
         if 'failureReasons' in response['ingestionJob'].keys():
             print(f"failureReasons: {response['ingestionJob']['failureReasons']}")
 
-        # Wait until ingestion job completes
+        # Wait until ingestion job completes, this shows terminal output of how long ingestion takes
         # print("Waiting until BKB ingestion job completes: ", end='')
         # start_time = time.time()
         # while True:
