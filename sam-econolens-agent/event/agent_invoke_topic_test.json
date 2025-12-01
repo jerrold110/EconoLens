@@ -11,6 +11,11 @@
       "name": "start_date_str",
       "type": "string",
       "value": "2025-08-01"
+    },
+    {
+      "name": "query",
+      "type": "string",
+      "value": "Tell me about the news related to consumers including retail, sales, spending and their effects on the economy"
     }
   ],
   "sessionId": "975373241930390",

@@ -78,49 +78,52 @@ Resources:
         - If unspecified, extract from context or prompt: "Please specify the start and end dates (YYYY-MM-DD format) for your request."
 
         Think out loud step-by-step:
-        Decide whether this is a report generation or question answering request
-        State which tool you need to use and why
-        Invoke the tools to retrieve data
-        Determine if sufficient data has been retrieved to generate a response
-        Provide direct, comprehensive answer using ONLY retrieved data
+          Decide whether this is a report generation or question answering request
+          State which tool you need to use and why
+          Invoke the tools to retrieve data
+          Determine if sufficient data has been retrieved to generate a response
+          Provide direct, comprehensive answer using ONLY retrieved data
 
         Available Tools: 
+          Topic-Based Tools
+          - GetTopicConsumerBehavior - Consumer spending, retail, household economics
+          - GetTopicCorporate - Business performance, corporate earnings, mergers
+          - GetTopicEconomyGeneral - GDP, economic growth, general indicators
+          - GetTopicEconomyLongTerm - Structural trends, long-term forecasts, demographic shifts
+          - GetTopicGovernmentAndPolicy - Fiscal policy, government spending, regulations
+          - GetTopicInflation - Price changes, CPI, cost of living
+          - GetTopicLaborMarket - Employment, wages, unemployment, workforce trends
 
-        Topic-Based Tools
-        - GetTopicConsumerBehavior - Consumer spending, retail, household economics
-        - GetTopicCorporate - Business performance, corporate earnings, mergers
-        - GetTopicEconomyGeneral - GDP, economic growth, general indicators
-        - GetTopicEconomyLongTerm - Structural trends, long-term forecasts, demographic shifts
-        - GetTopicGovernmentAndPolicy - Fiscal policy, government spending, regulations
-        - GetTopicInflation - Price changes, CPI, cost of living
-        - GetTopicLaborMarket - Employment, wages, unemployment, workforce trends
+          Entity-Based Tools
+          - GetEntityPerson - Information about specific individuals (e.g., "Jerome Powell")
+          - GetEntityInstitution - Information about organizations (e.g., "Federal Reserve")
 
-        Entity-Based Tools
-        - GetEntityPerson - Information about specific individuals (e.g., "Jerome Powell")
-        - GetEntityInstitution - Information about organizations (e.g., "Federal Reserve")
+          General Tool
+          - GetByQueryOnly - Broad searches when no specific topic/entity applies
 
-        General Tool
-        - GetByQueryOnly - Broad searches when no specific topic/entity applies
-
-        Task Types and Workflows
-        Task 1: Report Generation
-        Trigger Phrases: "generate report", "economic report for", "overview of", "summary of economic events"
+          Task Types and Workflows
+          Task 1: Report Generation
+          Trigger Phrases: "generate report", "economic report for", "overview of", "summary of economic events"
 
         Process:
-        Extract time period from request
-        Example: "December 2020" → start_date: 2020-12-01, end_date: 2020-12-31
-        Example: "Q1 2024" → start_date: 2024-01-01, end_date: 2024-03-31
-        If ambiguous or missing, prompt for clarification
+          Extract time period from request. Example: "Q1 2024" → start_date: 2024-01-01, end_date: 2024-03-31
+          If ambiguous or missing, prompt for clarification
+          Retrieve data for the following seven topics using a the right tool and a suitable query:
+            Consumer Behavior
+            Corporate
+            Economy General
+            Economy Long-Term
+            Government and Policy
+            Inflation
+            Labor Market
+            Final executive summary
+          Generate a report with one paragraph for each topic, Include all important information, be exhaustive with your details even if paragraph is lengthy.
+          Include a executive summary in the last paragraph
 
-        Retrieve data for the following topics and generate a report with one paragraph. Be exhaustive with your details even if paragraph is lengthy. Do not repeat details:
-        Consumer Behavior
-        Corporate
-        Economy General
-        Economy Long-Term
-        Government and Policy
-        Inflation
-        Labor Market
-        Final executive summary
+        Instructions:
+          Generate a report ONLY if you have retrieved information from the tools. If there is no information retrieved from tools, respond with: "I don't have enough information to answer that."
+          Include specific data points, percentages, and figures from retrieved information
+          Maintain factual, analytical tone
 
         Structure report as follows:
           **Economic Report for [TIME PERIOD]**
@@ -149,16 +152,10 @@ Resources:
           **Executive Summary**
           [paragraph]
 
-        Instructions:
-          Generate a report ONLY if you have retrieved information from the tools. If there is no information retrieved from tools, respond with: "I don't have enough information to answer that."
-          Include specific data points, percentages, and figures from retrieved information
-          Maintain factual, analytical tone
-          Include all important information, let the paragraph be lengthy
-          Include a executive summary in the last paragraph
 
         Task 2: Question Answering
         Trigger Phrases: Questions starting with "What", "How", "Why", "Tell me about", "Explain"
-
+        Process:
           Identify query category:
           A. Specific Person Mentioned
           Examples: "Donald Trump", "Janet Yellen", "Elon Musk"
@@ -240,6 +237,10 @@ Resources:
                     Description: "The end date of the time-period"
                     Required: True
                     Type: string
+                  query:
+                    Description: "The query to search the vector database with"
+                    Required: True
+                    Type: string
         - ActionGroupName: GetTopicCorporate
           Description: "Use this tool to get information on corporate events and news topics"
           ActionGroupExecutor:
@@ -257,6 +258,10 @@ Resources:
                     Type: string
                   start_date_str:
                     Description: "The end date of the time-period"
+                    Required: True
+                    Type: string
+                  query:
+                    Description: "The query to search the vector database with"
                     Required: True
                     Type: string
         - ActionGroupName: GetTopicEconomyGeneral
@@ -278,6 +283,10 @@ Resources:
                     Description: "The end date of the time-period"
                     Required: True
                     Type: string
+                  query:
+                    Description: "The query to search the vector database with"
+                    Required: True
+                    Type: string
         - ActionGroupName: GetTopicEconomyLongTerm
           Description: "Use this tool to get information on long-term economic indicators"
           ActionGroupExecutor:
@@ -295,6 +304,10 @@ Resources:
                     Type: string
                   start_date_str:
                     Description: "The end date of the time-period"
+                    Required: True
+                    Type: string
+                  query:
+                    Description: "The query to search the vector database with"
                     Required: True
                     Type: string
         - ActionGroupName: GetTopicGovermentAndPolicy
@@ -316,6 +329,10 @@ Resources:
                     Description: "The end date of the time-period"
                     Required: True
                     Type: string
+                  query:
+                    Description: "The query to search the vector database with"
+                    Required: True
+                    Type: string
         - ActionGroupName: GetTopicInflation
           Description: "Use this tool to get information on inflation"
           ActionGroupExecutor:
@@ -335,6 +352,10 @@ Resources:
                     Description: "The end date of the time-period"
                     Required: True
                     Type: string
+                  query:
+                    Description: "The query to search the vector database with"
+                    Required: True
+                    Type: string
         - ActionGroupName: GetTopicLaborMarket
           Description: "Use this tool to get information on labor market topics"
           ActionGroupExecutor:
@@ -352,6 +373,10 @@ Resources:
                     Type: string
                   start_date_str:
                     Description: "The end date of the time-period"
+                    Required: True
+                    Type: string
+                  query:
+                    Description: "The query to search the vector database with"
                     Required: True
                     Type: string
         # Action groups for Entity

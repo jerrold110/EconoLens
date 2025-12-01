@@ -8,7 +8,7 @@ from botocore.exceptions import ClientError
 kb_id = os.environ.get("BEDROCK_KNOWLEDGE_BASE_ID")
 day_chunk = int(os.environ.get("RETRIEVE_CHUNK_PER_DAY_COUNT"))
 rerank_chunk_return = int(os.environ.get("RERANK_CHUNK_COUNT"))
-query = 'News related to inflation'
+#query = 'News related to inflation'
 
 def with_backoff(func):
     """
@@ -160,7 +160,8 @@ def lambda_handler(event, context):
 
     start_date_str = next(d['value'] for d in params if d['name'] == 'start_date_str')
     end_date_str = next(d['value'] for d in params if d['name'] == 'end_date_str')
-    
+    query  = next(d['value'] for d in params if d['name'] == 'query')
+
     payload = query_topic_inflation(start_date_str,
                                        end_date_str,
                                        query)
