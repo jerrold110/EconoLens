@@ -2,7 +2,7 @@ AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
 Description: >
   sam-econolens-agent
-  AI components of the Econolens project consisting of IAM, Agent, Action groups & Lambdas, guardrail, Agent alias
+  AI components of Econolens consisting of IAM, Agent, Alias, Action groups & Lambdas, guardrail, Model invocation logging resources
 
 Parameters:
   AgentName:
@@ -11,12 +11,20 @@ Parameters:
     Description: Name for the Bedrock Agent
   Environment:
     Type: String
-    Default: Dev
+    Default: dev
     Description: The environment the resources are deployed into
     AllowedValues:
-    - Dev
-    - Stag
-    - Prod
+    - dev
+    - stag
+    - prod
+  BedrockLogsBucket:
+    Default: 'econolens-invocation-logs'
+    Description: Name of the S3 bucket to store Bedrock Model Invocation logs, region and account ID are not appended to provided bucket name, enrivonment is
+    Type: String
+  BedrockServerAccessLogsBucket:
+    Default: 'econolens-server-access-logs'
+    Description: Name of the S3 bucket to store the server access logs for Bedrock Model Invocation logs bucket, region and account ID are not appended to provided bucket name, enrivonment is
+    Type: String
     
 Globals:
   Function:
@@ -38,9 +46,9 @@ Resources:
   AgentAlias:
     Type: AWS::Bedrock::AgentAlias
     Properties:
-      AgentAliasName: !Sub "${AgentName}_Guardrail_${Environment}"
+      AgentAliasName: !Sub "${AgentName}_${Environment}"
       AgentId: !GetAtt BedrockAgent.AgentId
-      Description: !Sub "${AgentName}"
+      Description: !Sub "${AgentName} Alias"
   # --- BEDROCK AGENT ---
   BedrockAgent:
     Type: AWS::Bedrock::Agent
@@ -71,10 +79,10 @@ Resources:
 
         Think out loud step-by-step:
         Decide whether this is a report generation or question answering request
-        State which tool(s) you're using and why
-        Call appropriate tool(s) with correct parameters
+        State which tool you need to use and why
+        Invoke the tools to retrieve data
+        Determine if sufficient data has been retrieved to generate a response
         Provide direct, comprehensive answer using ONLY retrieved data
-        If data is insufficient, state clearly what's missing
 
         Available Tools: 
 
@@ -150,54 +158,50 @@ Resources:
 
         Task 2: Question Answering
         Trigger Phrases: Questions starting with "What", "How", "Why", "Tell me about", "Explain"
-        Decision Tree:
 
-        Extract time period (prompt if missing)
-        Identify query category:
+          Identify query category:
+          A. Specific Person Mentioned
+          Examples: "Donald Trump", "Janet Yellen", "Elon Musk"
+          Tool: GetEntityPerson
 
-        A. Specific Person Mentioned
-        Examples: "Donald Trump", "Janet Yellen", "Elon Musk"
-        Tool: GetEntityPerson
+          B. Specific Institution Mentioned
+          Examples: "Federal Reserve", "World Bank", "Tesla", "Goldman Sachs"
+          Tool: GetEntityInstitution
 
-        B. Specific Institution Mentioned
-        Examples: "Federal Reserve", "World Bank", "Tesla", "Goldman Sachs"
-        Tool: GetEntityInstitution
+          C. Clear Topic Category
+          Consumer-related: GetTopicConsumerBehavior
+          Business/corporate: GetTopicCorporate
+          General economy/GDP: GetTopicEconomyGeneral
+          Long-term trends: GetTopicEconomyLongTerm
+          Government/policy: GetTopicGovernmentAndPolicy
+          Prices/inflation: GetTopicInflation
+          Jobs/wages: GetTopicLaborMarket
 
-        C. Clear Topic Category
-        Consumer-related: GetTopicConsumerBehavior
-        Business/corporate: GetTopicCorporate
-        General economy/GDP: GetTopicEconomyGeneral
-        Long-term trends: GetTopicEconomyLongTerm
-        Government/policy: GetTopicGovernmentAndPolicy
-        Prices/inflation: GetTopicInflation
-        Jobs/wages: GetTopicLaborMarket
+          D. Multi-Category or Unclear
+          If question spans multiple topics (e.g., "How did inflation affect consumer behavior?"):
+          Use multiple relevant tools: GetTopicInflation and GetConsumerBehavior
+          Combine findings to answer question
+          If truly unclear, confirm with the user "Your question is unclear, would you like me to search only with your query and no specific category?". If user confirms, use GetByQueryOnly with the full question as query
 
-        D. Multi-Category or Unclear
-        If question spans multiple topics (e.g., "How did inflation affect consumer behavior?"):
-        Use multiple relevant tools
-        Synthesize findings
-
-        If truly unclear, confirm with the user "Your question is unclear, would you like me to search only with your query and no specific category?". Use GetByQueryOnly with the full question as query
-       
         Example Interactions
         Example 1: Report Request
         User: "Give me the economic report for March 2024"
         Agent:
 
-        "This is a report generation request"
-        "Time period: 2024-03-01 to 2024-03-31"
-        "Retrieving data for all 7 topic categories..."
-        [Calls all 7 topic tools]
+        "This is a report generation request. Time period: 2024-03-01 to 2024-03-31"
+        "I need to retrieve data for all 7 topic categories"
+        [Calls all 7 topic tools and gets data]
+        "I have sufficient data to generate a report"
         [Generates structured report]
 
         Example 2: Specific Question
         User: "What did the Federal Reserve do about inflation in early 2024?"
         Agent:
 
-        "This is a question answering request"
-        "Time period: 2024-01-01 to 2024-03-31 (interpreting 'early 2024' as Q1)"
+        "This is a question answering request. Time period: 2024-01-01 to 2024-03-31 (interpreting 'early 2024' as Q1)"
         "Using GetEntityInstitution (federal reserve) and GetTopicInflation to get comprehensive view"
         [Calls both tools]
+        "I have sufficient context to answer this question"
         [Provides detailed answer synthesizing both sources]
 
         Example 3: Ambiguous Request
@@ -207,8 +211,6 @@ Resources:
         Would you like a comprehensive economic report covering multiple topics?
         Do you have a specific question about a particular economic aspect?
         Also, please specify the time period (start and end dates) for your request."
-
-        
 
 
       # --- Guardrail ---
@@ -670,8 +672,8 @@ Resources:
   
 
   # --- IAM ROLES ---
-  # Principal, who is allowed to assume the role
-  # Resource, specific resource(s) the role (role actions) applies to
+  # Environment parameter not needed as name is uniquely assigned my CloudForm
+  # Principal, who is allowed to assume the role. Resource, specific resource(s) the role (role actions) applies to
   AgentFunctionsRole:
     Type: AWS::IAM::Role
     Properties:
@@ -693,6 +695,7 @@ Resources:
     Type: AWS::IAM::Role
     Properties:
       Description: A role for Agent to assume
+      # Only bedrock can assume this role
       AssumeRolePolicyDocument:
         Version: "2012-10-17"
         Statement:
@@ -744,13 +747,253 @@ Resources:
                 Resource: "*" # can place specific model arn here
               - Effect: Allow
                 Action:
-                  - "logs:CreateLogGroup"
-                  - "logs:CreateLogStream"
-                  - "logs:PutLogEvents"
-                Resource: "*"
-              - Effect: Allow
-                Action:
                   - "bedrock:GetGuardrail"
                   - "bedrock:ApplyGuardrail"
                   - "bedrock:ListGuardrails"
                 Resource: !Sub "arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:agent/${AgentName}" # this has to be used instead of !GetAtt BedrockAgent.AgentArn
+        - PolicyName: BedrockAgentObservabilityPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              # This is for Bedrock model invication logging - S3 bucket only - no CloudWatch logs
+              # - Effect: Allow
+              #   Action:
+              #     - "logs:CreateLogGroup"
+              #     - "logs:CreateLogStream"
+              #     - "logs:PutLogEvents"
+              #   Resource: "*"
+              # This is for CloudWatch Logs Metric logging
+              - Effect: Allow
+                Action: 
+                  - "cloudwatch:PutMetricData"
+                Condition:
+                  StringEquals:
+                    cloudwatch:namespace: "AWS/Bedrock/Agents"
+                Resource: "*"
+              
+
+  # --- Resources for logging ---
+  # Taken from https://github.com/aws-samples/enable-bedrock-logging-using-cloudformation/blob/main/enable-bedrock-logging-using-cloudformation.yaml#L66
+  # Server access. No encryption
+  rServerAccessLogsBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "${BedrockServerAccessLogsBucket}-${Environment}"
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      VersioningConfiguration:
+        Status: Enabled
+    UpdateReplacePolicy: Retain
+    # Set to delete for this project
+    DeletionPolicy: Delete
+
+  rServerAccessLogsPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref rServerAccessLogsBucket
+      PolicyDocument:
+        Statement:
+          # Deny all access if not using HTTPS
+          - Action: s3:*
+            Condition:
+              Bool:
+                'aws:SecureTransport': 'false'
+            Effect: Deny
+            Principal:
+              AWS: '*'
+            Resource:
+              - !GetAtt rServerAccessLogsBucket.Arn
+              - !Sub ${rServerAccessLogsBucket.Arn}/*     
+          # Can write to ServerAccessLogsBucket/bedrock-invocation-logs-bucket
+          - Action: s3:PutObject
+            Condition:
+              ArnLike:
+                aws:SourceArn: !GetAtt rBedrockInvocationLogsBucket.Arn
+              StringEquals:
+                aws:SourceAccount: !Ref AWS::AccountId
+            Effect: Allow
+            Principal:
+              Service: logging.s3.amazonaws.com
+            Resource:
+              - !Sub ${rServerAccessLogsBucket.Arn}/bedrock-invocation-logs-bucket/*
+        Version: '2012-10-17'
+  # Model invocation logging bucket. No encryption
+  rBedrockInvocationLogsBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "${BedrockLogsBucket}-${Environment}"
+      LoggingConfiguration: #??
+        DestinationBucketName: !Ref rServerAccessLogsBucket
+        LogFilePrefix: bedrock-invocation-logs-bucket/
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      VersioningConfiguration:
+        Status: Enabled
+    UpdateReplacePolicy: Retain
+    # Set to delete for this project
+    DeletionPolicy: Delete
+
+  rBedrockInvocationLogsBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref rBedrockInvocationLogsBucket
+      PolicyDocument:
+        Statement:
+          - Action: s3:*
+            Condition:
+              Bool:
+                'aws:SecureTransport': 'false'
+            Effect: Deny
+            Principal:
+              AWS: '*'
+            Resource:
+              - !GetAtt rBedrockInvocationLogsBucket.Arn
+              - !Sub ${rBedrockInvocationLogsBucket.Arn}/*
+          # Can write to BedrockInvocationLogsBucket
+          - Action: s3:PutObject
+            Condition:
+              StringEquals:
+                aws:SourceAccount: !Ref AWS::AccountId
+              ArnLike:
+                aws:SourceArn: !Sub arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:*
+            Effect: Allow
+            Principal:
+              Service: bedrock.amazonaws.com
+            Resource: !Sub ${rBedrockInvocationLogsBucket.Arn}/*
+        Version: '2012-10-17'
+
+  rBedrockLoggingLambdaFunction:
+    Type: 'AWS::Lambda::Function'
+    Properties:
+      FunctionName: !Sub "rBedrockLoggingLambdaFunction-${Environment}"
+      Runtime: 'python3.13'
+      Handler: 'index.lambda_handler'
+      Role: !GetAtt rBedrockLoggingLambdaExecutionRole.Arn
+      Code:
+        ZipFile: |
+          # Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+          # SPDX-License-Identifier: MIT-0
+
+          from __future__ import print_function
+          import json
+          import boto3
+          import urllib3
+          import os
+          SUCCESS = "SUCCESS"
+          FAILED = "FAILED"
+          http = urllib3.PoolManager()
+
+
+          def lambda_handler(event, context):
+              print("Received event: " + json.dumps(event))
+              try:
+                  s3_bucket_name = os.environ['S3_BUCKET_NAME']
+                  request_type = event['RequestType']
+                  bedrock_logging(s3_bucket_name,request_type,event,context)
+              except Exception as e:
+                  print(f"Error: {e}")
+                  responseData = {'message': 'Operation Failed'}
+                  send(event, context, FAILED, responseData)
+                  
+              
+          def bedrock_logging(s3_bucket_name,request_type,event,context):
+              client = boto3.client('bedrock')
+              if request_type == 'Create' or request_type == 'Update':
+                  response = client.put_model_invocation_logging_configuration(
+                      loggingConfig={
+                          's3Config': {
+                              'bucketName': s3_bucket_name,
+                              'keyPrefix': 'bedrock'
+                          },
+                          'textDataDeliveryEnabled': True,
+                          'imageDataDeliveryEnabled': False,
+                          'embeddingDataDeliveryEnabled': False
+                      }
+                  )
+                  message = 'Operation to enable or update Bedrock logging succeeded'
+              elif request_type == 'Delete':
+                  response = client.delete_model_invocation_logging_configuration()
+                  message = 'Operation to disable Bedrock logging succeeded'
+              else:
+                  send(event, context, FAILED, {'message': f'Unsupported request type: {request_type}'})
+                  return
+              status = SUCCESS if response['ResponseMetadata']['HTTPStatusCode'] == 200 else FAILED
+              send(event, context, status, {'message': message})
+
+
+          def send(event, context, responseStatus, responseData, physicalResourceId=None, noEcho=False, reason=None):
+              responseUrl = event['ResponseURL']
+              print(responseUrl)
+              responseBody = {
+                  'Status' : responseStatus,
+                  'Reason' : reason or "See the details in CloudWatch Log Stream: {}".format(context.log_stream_name),
+                  'PhysicalResourceId' : physicalResourceId or context.log_stream_name,
+                  'StackId' : event['StackId'],
+                  'RequestId' : event['RequestId'],
+                  'LogicalResourceId' : event['LogicalResourceId'],
+                  'NoEcho' : noEcho,
+                  'Data' : responseData
+              }
+              json_responseBody = json.dumps(responseBody)
+              print("Response body:")
+              print(json_responseBody)
+              headers = {
+                  'content-type' : '',
+                  'content-length' : str(len(json_responseBody))
+              }
+              try:
+                  response = http.request('PUT', responseUrl, headers=headers, body=json_responseBody)
+                  print("Status code:", response.status)
+              except Exception as e:
+                  print("send(..) failed executing http.request(..):", e)
+      Environment:
+        Variables:
+          S3_BUCKET_NAME: !Ref rBedrockInvocationLogsBucket
+
+  rBedrockLoggingLambdaExecutionRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: 'sts:AssumeRole'
+      ManagedPolicyArns:
+        - 'arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole'
+      Policies:
+        - PolicyName: BedrockLoggingInlinePolicy
+          PolicyDocument:
+            Statement:
+              - Action:
+                  - bedrock:DeleteModelInvocationLoggingConfiguration
+                  - bedrock:PutModelInvocationLoggingConfiguration
+                Effect: Allow
+                Resource: '*'
+              # - Action:
+              #     - iam:PassRole
+              #   Effect: Allow
+              #   Resource: !GetAtt rBedrockServiceRoleForLogging.Arn
+            Version: '2012-10-17'
+          
+
+  rInvokeLambda:
+    Type: AWS::CloudFormation::CustomResource
+    Properties:
+      ServiceTimeout: 60
+      ServiceToken: !GetAtt rBedrockLoggingLambdaFunction.Arn
+
+Outputs:
+  AgentID:
+    Description: "Bedrock Agent ID"
+    Value: !GetAtt BedrockAgent.AgentId
+  AgentAliasID:
+    Description: "Bedrock Agent Alias ID"
+    Value: !GetAtt AgentAlias.AgentAliasId
