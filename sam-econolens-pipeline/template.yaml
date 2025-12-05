@@ -15,9 +15,8 @@ Globals:
         S3_STAGE: econolens-staging-area
         S3_ENRICH: econolens-data-enriched
         S3_CHUNK: econolens-data-chunked
-        # Change this when KB restarts
-        BEDROCK_KB_ID: J689XHGM6B 
-        BEDROCK_KB_DATASOURCE_ID: ABC123
+        BEDROCK_KB_ID: AH5XEHI3TI
+        BEDROCK_KB_DATASOURCE_ID: 7FZIT9AQEJ
 
 Resources:
   # IAM roles created with AWS managed IAM policies
@@ -52,7 +51,7 @@ Resources:
         - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
         - arn:aws:iam::aws:policy/AmazonS3FullAccess
 
-  # Pipeline 3 invokes the embedding model on bedrock, access S3
+  # Pipeline 3 invokes the embedding/fm model on bedrock, access S3
   EconolensDataChunkRole:
     Type: AWS::IAM::Role
     Properties:

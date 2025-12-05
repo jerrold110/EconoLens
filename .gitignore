@@ -245,6 +245,6 @@ $RECYCLE.BIN/
 
 # SAM build
 .aws-sam/
-sam-lambda-only/.aws-sam/
 sam-econolens/.aws-sam/
 /test*
+/evaluation

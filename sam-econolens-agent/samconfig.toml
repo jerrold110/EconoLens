@@ -3,7 +3,7 @@
 version = 0.1
 
 [default.global.parameters]
-stack_name = "sam-econolens-agent"
+stack_name = "sam-econolens-agent-dev"
 region = "us-east-1"
 
 [default.build.parameters]
@@ -17,9 +17,9 @@ lint = true
 capabilities = "CAPABILITY_IAM"
 confirm_changeset = true
 resolve_s3 = true
-s3_prefix = "sam-econolens-agent"
+s3_prefix = "sam-econolens-agent-dev"
 image_repositories = []
-parameter_overrides = "AgentName=\"EconolensAgent\" Environment=\"dev\" BedrockLogsBucket=\"econolens-invocation-logs\" BedrockServerAccessLogsBucket=\"econolens-server-access-logs\""
+parameter_overrides = "AgentName=\"EconolensAgent\" Environment=\"dev\""
 
 [default.package.parameters]
 resolve_s3 = true

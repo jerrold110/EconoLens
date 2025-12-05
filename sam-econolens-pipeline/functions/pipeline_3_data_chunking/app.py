@@ -10,7 +10,7 @@ If function times out, break up topics into 2 or 3 lambdas instead of processing
 import boto3
 from botocore.exceptions import ClientError
 
-import json, os, time
+import json, os, time, random
 from datetime import datetime, timedelta
 from os.path import join, dirname
 
@@ -23,6 +23,70 @@ from langchain_aws import BedrockEmbeddings
 # amazon.titan-embed-text-v1
 # https://huggingface.co/amazon/Titan-text-embeddings-v2  lightweight and effective  
 # https://us-east-1.console.aws.amazon.com/bedrock/home?region=us-east-1#/model-catalog/serverless/amazon.titan-embed-text-v2:0
+
+# Summarize functions
+
+def with_backoff(func):
+    """
+    Decorator that retries a function with random backoff when a ThrottlingException (or other retryable error) occurs.
+    """
+    def wrapper(*args, **kwargs):
+        max_retries = 3
+        max_backoff = 5
+
+        for attempt in range(max_retries):
+            try:
+                # Call the wrapped function
+                sleep = random.uniform(1, max_backoff)
+                print(f"Initial call. Sleeping {sleep:.2f}s")
+                return func(*args, **kwargs)
+
+            except ClientError as e:
+                code = e.response["Error"]["Code"]
+
+                # Only retry on throttling
+                if code != "ThrottlingException":
+                    raise
+
+                # Compute backoff 
+                sleep = random.uniform(2, max_backoff)
+                print(f"[retry {attempt+1}] Throttled. Sleeping {sleep:.2f}s")
+                time.sleep(sleep)
+
+        raise RuntimeError("Exceeded retry limit due to ThrottlingException")
+    return wrapper
+
+def summarize_chunk(text):
+    """
+    Function for summarizing text with nova-lita into <800 tokens
+    """
+
+    system = [{ "text": "You are a text summarizer for news articles. Summarize text as a coherent piece of writing while preserving important information into less than 600 words" }]
+
+    messages = [
+        {"role": "user", "content": [{"text": f"{text}"}]},
+    ]
+
+    inf_params = {"maxTokens": 850, "topP": 0.3, "temperature": 0.7}
+
+    try:
+        model_response = bedrock_client.converse(
+            modelId="us.amazon.nova-lite-v1:0", 
+            messages=messages, 
+            system=system, 
+            inferenceConfig=inf_params,
+        )
+
+        http_code = json.dumps(model_response['ResponseMetadata']['HTTPStatusCode'], indent=2)
+        print(f"Response Http code: {http_code}")
+
+        return model_response["output"]["message"]["content"][0]["text"]
+    
+    except Exception as e:
+        print(f"An error occurred: {e} \n Text: \n {text[:200]}")
+        return ""
+
+
 _embeddings = BedrockEmbeddings(model_id="amazon.titan-embed-text-v2:0") 
 _Semchunker = SemanticChunker(_embeddings, breakpoint_threshold_type='percentile', breakpoint_threshold_amount=96) # 1% difference from default
 
@@ -100,6 +164,13 @@ def chunk_and_copy(client,
         ext = doc_key.rsplit('.', 1)[1]
 
         for i, chunk_text in enumerate(chunks, start=1):
+            # If chunk_text is over 800 tokens (600 words), invoke Nova-lite with boto3 to summarize it
+            if len(chunk_text.split()) > 600:
+                print("⚠️  Chunk is over 800 tokens. Calling bedrock fm to summarize")
+                chunk_text = summarize_chunk(chunk_text)
+            else:
+                print("✅ Chunk is less than 800 tokens")
+
             destination_path = f"{path}_chunk_{i}_.{ext}" # eg: 2025-10-11/economy_general/filename_chunk_1.txt
 
             client.put_object(Bucket=dest_bucket,
@@ -160,6 +231,9 @@ source_bucket = os.environ.get("S3_ENRICH")
 dest_bucket = os.environ.get("S3_CHUNK")
 print(source_bucket, dest_bucket)
 
+# Client for model inference call
+bedrock_client = boto3.client("bedrock-runtime")
+
 def chunk_doc_and_metadata(datetime_input:str):
     try:
         datetime.strptime(datetime_input, '%Y-%m-%dT%H:%M:%SZ')
@@ -189,4 +263,5 @@ def lambda_handler(event, context):
             "message": f"Function chunk_doc_and_metadata with argument {event['batch_date']} finished",
         }),
     }
+
 
