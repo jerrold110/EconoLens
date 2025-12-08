@@ -28,7 +28,7 @@ Globals:
       - x86_64
     Environment:
       Variables:
-        BEDROCK_KNOWLEDGE_BASE_ID: QHBY7CK491
+        BEDROCK_KNOWLEDGE_BASE_ID: ZNYPAK6EK5
         # Max returned in 1 call is 100, more requires pagination and nextToken
         RETRIEVE_CHUNK_PER_DAY_COUNT: 5
         # number of returned chunks after rerank
@@ -463,10 +463,10 @@ Resources:
           InferenceConfiguration:
             MaximumLength: 3000 # 1024
             StopSequences:
-              - </answer>
-              - <thinking>
-              - ⏎<thinking>
-              - ⏎⏎<thinking>
+              - "</answer>"
+              - "<thinking>"
+              - "⏎<thinking>"
+              - "⏎⏎<thinking>"
             Temperature: 0.7
             TopK: 1
             TopP: 0.6

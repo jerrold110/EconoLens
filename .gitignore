@@ -247,4 +247,3 @@ $RECYCLE.BIN/
 .aws-sam/
 sam-econolens/.aws-sam/
 /test*
-/evaluation
