@@ -1,4 +1,4 @@
-# Sample responses to common test cases
+# Sample responses to common test cases:
 
 # Single-topic question
 ### Input
@@ -23,7 +23,6 @@ In August 2025, several significant corporate deals took place:
 
 8. **Nexstar Media Group in Talks to Acquire Tegna Inc.**: Nexstar Media Group is reportedly in advanced discussions to acquire Tegna Inc. in a deal potentially valued at around $8 billion, including debt.
 
-# Multi-topic question
 ### Input
 What did the Federal Reserve do about inflation in Q3 2025?
 
