@@ -246,4 +246,4 @@ $RECYCLE.BIN/
 # SAM build
 .aws-sam/
 sam-econolens/.aws-sam/
-/test*
+/test_ignore*
