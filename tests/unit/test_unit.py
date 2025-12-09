@@ -7,8 +7,10 @@ from botocore.exceptions import ClientError
 from sentence_transformers import SentenceTransformer, util
 
 # ---- CONFIG ----
-agentId="SSFZ7SY1DW"
-agentAliasId="NH4NWLPABD"
+agentId = os.getenv("AGENT_ID")
+agentAliasId = os.getenv("AGENT_ALIAS_ID")
+assert agentId is not None; assert agentAliasId is not None
+
 sessionId=str(uuid.uuid4())
 
 bedrock_agent_runtime_client = boto3.client("bedrock-agent-runtime", region_name="us-east-1")
