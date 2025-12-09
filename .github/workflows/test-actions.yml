@@ -41,38 +41,38 @@ jobs:
         working-directory: sam-econolens-agent
         run: sam deploy --config-env "stage" --no-confirm-changeset --no-fail-on-empty-changeset
 
-      # # Run tests on AI Agent
-      #   # Get variables
-      # - name: Acquire AgentID and AgentAliasID from cloudF output
-      #   run: |
-      #     agent_id=$(aws cloudformation describe-stacks \
-      #       --stack-name sam-econolens-agent-stg \
-      #       --query "Stacks[0].Outputs[?OutputKey=='AgentID'].OutputValue" \
-      #       --output text)
+      # Run tests on AI Agent
+        # Get variables
+      - name: Acquire AgentID and AgentAliasID from cloudF output
+        run: |
+          agent_id=$(aws cloudformation describe-stacks \
+            --stack-name sam-econolens-agent-stg \
+            --query "Stacks[0].Outputs[?OutputKey=='AgentID'].OutputValue" \
+            --output text)
 
-      #     echo "AGENT_ID=$agent_id" >> $GITHUB_ENV
+          echo "AGENT_ID=$agent_id" >> $GITHUB_ENV
 
-      #     agent_alias_id=$(aws cloudformation describe-stacks \
-      #       --stack-name sam-econolens-agent-stg \
-      #       --query "Stacks[0].Outputs[?OutputKey=='AgentAliasID"'].OutputValue" \
-      #       --output text)
+          agent_alias_id=$(aws cloudformation describe-stacks \
+            --stack-name sam-econolens-agent-stg \
+            --query "Stacks[0].Outputs[?OutputKey=='AgentAliasID"'].OutputValue" \
+            --output text)
 
-      #     echo "AGENT_ALIAS_ID=$agent_alias_id" >> $GITHUB_ENV
+          echo "AGENT_ALIAS_ID=$agent_alias_id" >> $GITHUB_ENV
 
-      # - name: Smoke tests
-      #   run: |
-      #     pytest tests/smoke/test_smoke.py
-      #   env:
-      #     AGENT_ID: ${{ env.AGENT_ID }}
-      #     AGENT_ALIAS_ID: ${{ env.AGENT_ALIAS_ID }}
-      # - name: Unit tests
-      #   run: |
-      #     pytest tests/unit/test_unit.py
-      #   env:
-      #     AGENT_ID: ${{ env.AGENT_ID }}
-      #     AGENT_ALIAS_ID: ${{ env.AGENT_ALIAS_ID }}
+      - name: Smoke tests
+        run: |
+          pytest tests/smoke/test_smoke.py
+        env:
+          AGENT_ID: ${{ env.AGENT_ID }}
+          AGENT_ALIAS_ID: ${{ env.AGENT_ALIAS_ID }}
+      - name: Unit tests
+        run: |
+          pytest tests/unit/test_unit.py
+        env:
+          AGENT_ID: ${{ env.AGENT_ID }}
+          AGENT_ALIAS_ID: ${{ env.AGENT_ALIAS_ID }}
 
       # Clean up resources
       - name: Clean up stack
         working-directory: sam-econolens-agent
-        run: sam delete --stack-name sam-econolens-agent-stg
+        run: sam delete --stack-name sam-econolens-agent-stg --no-prompts

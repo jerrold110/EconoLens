@@ -846,6 +846,8 @@ Resources:
   # --- Resources for logging ---
   # Taken from https://github.com/aws-samples/enable-bedrock-logging-using-cloudformation/blob/main/enable-bedrock-logging-using-cloudformation.yaml#L66
   # Server access. No encryption
+  # S3 Deletion policy is RETAIN. Buckets have to be emptied before rebuilding the stack (has to be done manually)
+  # S3 In production, the stack would never be deleted, so keep both as retain
   rServerAccessLogsBucket:
     Type: AWS::S3::Bucket
     Properties:
