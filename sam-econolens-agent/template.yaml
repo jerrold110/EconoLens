@@ -1060,10 +1060,10 @@ Resources:
       ServiceTimeout: 60
       ServiceToken: !GetAtt rBedrockLoggingLambdaFunction.Arn
 
-Outputs:
-  AgentID:
-    Description: "Bedrock Agent ID"
-    Value: !GetAtt BedrockAgent.AgentId
-  AgentAliasID:
-    Description: "Bedrock Agent Alias ID"
-    Value: !GetAtt AgentAlias.AgentAliasId
+# Outputs:
+#   AgentID:
+#     Description: "Bedrock Agent ID"
+#     Value: !GetAtt BedrockAgent.AgentId
+#   AgentAliasID:
+#     Description: "Bedrock Agent Alias ID"
+#     Value: !GetAtt AgentAlias.AgentAliasId
