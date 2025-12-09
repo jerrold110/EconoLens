@@ -857,8 +857,8 @@ Resources:
         RestrictPublicBuckets: true
       VersioningConfiguration:
         Status: Enabled
-    # UpdateReplacePolicy: Retain
-    # DeletionPolicy: Delete
+    UpdateReplacePolicy: Retain
+    DeletionPolicy: Retain
 
   rServerAccessLogsPolicy:
     Type: AWS::S3::BucketPolicy
@@ -906,8 +906,8 @@ Resources:
         RestrictPublicBuckets: true
       VersioningConfiguration:
         Status: Enabled
-    # UpdateReplacePolicy: Retain
-    # DeletionPolicy: Delete
+    UpdateReplacePolicy: Retain
+    DeletionPolicy: Retain
 
   rBedrockInvocationLogsBucketPolicy:
     Type: AWS::S3::BucketPolicy

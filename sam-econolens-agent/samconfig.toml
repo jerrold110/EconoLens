@@ -32,3 +32,35 @@ warm_containers = "EAGER"
 
 [default.local_start_lambda.parameters]
 warm_containers = "EAGER"
+
+
+[stage.global.parameters]
+stack_name = "sam-econolens-agent-stg"
+region = "us-east-1"
+
+[stage.build.parameters]
+cached = true
+parallel = true
+
+[stage.validate.parameters]
+lint = true
+
+[stage.deploy.parameters]
+capabilities = "CAPABILITY_IAM"
+confirm_changeset = true
+resolve_s3 = true
+s3_prefix = "sam-econolens-agent-stg"
+image_repositories = []
+parameter_overrides = "AgentName=\"EconolensAgent\" Environment=\"stag\""
+
+[stage.package.parameters]
+resolve_s3 = true
+
+[stage.sync.parameters]
+watch = true
+
+[stage.local_start_api.parameters]
+warm_containers = "EAGER"
+
+[stage.local_start_lambda.parameters]
+warm_containers = "EAGER"
