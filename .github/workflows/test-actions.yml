@@ -34,11 +34,11 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: us-east-1
       # Spin up infrastructure on AWS
-      - name: Change dircetory to sam-econolens-agent
-        run: cd sam-econolens-agent
       - name: Build stack
+        working-directory: sam-econolens-agent
         run: sam build
       - name: Depoy stack
+        working-directory: sam-econolens-agent
         run: sam deploy --config-env "stage" --no-confirm-changeset --no-fail-on-empty-changeset
 
       # # Run tests on AI Agent
@@ -74,4 +74,5 @@ jobs:
 
       # Clean up resources
       - name: Clean up stack
+        working-directory: sam-econolens-agent
         run: sam delete --stack-name sam-econolens-agent-stg
