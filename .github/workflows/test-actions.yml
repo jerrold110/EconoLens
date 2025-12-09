@@ -45,17 +45,11 @@ jobs:
         # Get variables
       - name: Acquire AgentID and AgentAliasID from cloudF output
         run: |
-          agent_id=$(aws cloudformation describe-stacks \
-            --stack-name sam-econolens-agent-stg \
-            --query "Stacks[0].Outputs[?OutputKey=='AgentID'].OutputValue" \
-            --output text)
+          agent_id="$(aws cloudformation describe-stacks --stack-name sam-econolens-agent-stg --query "Stacks[0].Outputs[?OutputKey=='AgentID'].OutputValue" --output text)"
 
           echo "AGENT_ID=$agent_id" >> $GITHUB_ENV
 
-          agent_alias_id=$(aws cloudformation describe-stacks \
-            --stack-name sam-econolens-agent-stg \
-            --query "Stacks[0].Outputs[?OutputKey=='AgentAliasID"'].OutputValue" \
-            --output text)
+          agent_alias_id="$(aws cloudformation describe-stacks --stack-name sam-econolens-agent-stg --query "Stacks[0].Outputs[?OutputKey=='AgentAliasID'].OutputValue" --output text)"
 
           echo "AGENT_ALIAS_ID=$agent_alias_id" >> $GITHUB_ENV
 
