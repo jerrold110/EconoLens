@@ -1,130 +1,446 @@
-# sam-econolens-agent
+# **Econolens Agent – Infrastructure-as-Code (CloudFormation and SAM)**
 
-This project contains source code and supporting files for a serverless application that you can deploy with the SAM CLI. It includes the following files and folders.
+Infrastructure deployment for the **Econolens Agent**, an agentic RAG-based economic analysis system built on **Amazon Bedrock Agents**, **Lambda**, **OpenSearch**, and **CloudWatch/S3** for observability.
+This SAM template deploys the full Bedrock Agent ecosystem—including the agent, alias, guardrails, action groups, Lambda tools, IAM roles, and logging infrastructure—across multiple environments. Through version control on Github, all the components especially the Agent are versioned and Github Actions is used for CI/CD.
 
-- hello_world - Code for the application's Lambda function.
-- events - Invocation events that you can use to invoke the function.
-- tests - Unit tests for the application code. 
-- template.yaml - A template that defines the application's AWS resources.
+---
 
-The application uses several AWS resources, including Lambda functions and an API Gateway API. These resources are defined in the `template.yaml` file in this project. You can update the template to add AWS resources through the same deployment process that updates your application code.
+## **Table of Contents**
 
-If you prefer to use an integrated development environment (IDE) to build and test your application, you can use the AWS Toolkit.  
-The AWS Toolkit is an open source plug-in for popular IDEs that uses the SAM CLI to build and deploy serverless applications on AWS. The AWS Toolkit also adds a simplified step-through debugging experience for Lambda function code. See the following links to get started.
+* [Overview](#overview)
+* [Architecture](#architecture)
 
-* [CLion](https://docs.aws.amazon.com/toolkit-for-jetbrains/latest/userguide/welcome.html)
-* [GoLand](https://docs.aws.amazon.com/toolkit-for-jetbrains/latest/userguide/welcome.html)
-* [IntelliJ](https://docs.aws.amazon.com/toolkit-for-jetbrains/latest/userguide/welcome.html)
-* [WebStorm](https://docs.aws.amazon.com/toolkit-for-jetbrains/latest/userguide/welcome.html)
-* [Rider](https://docs.aws.amazon.com/toolkit-for-jetbrains/latest/userguide/welcome.html)
-* [PhpStorm](https://docs.aws.amazon.com/toolkit-for-jetbrains/latest/userguide/welcome.html)
-* [PyCharm](https://docs.aws.amazon.com/toolkit-for-jetbrains/latest/userguide/welcome.html)
-* [RubyMine](https://docs.aws.amazon.com/toolkit-for-jetbrains/latest/userguide/welcome.html)
-* [DataGrip](https://docs.aws.amazon.com/toolkit-for-jetbrains/latest/userguide/welcome.html)
-* [VS Code](https://docs.aws.amazon.com/toolkit-for-vscode/latest/userguide/welcome.html)
-* [Visual Studio](https://docs.aws.amazon.com/toolkit-for-visual-studio/latest/user-guide/welcome.html)
+  * [Bedrock Agent](#bedrock-agent)
+  * [Action Groups & Lambda Tools](#action-groups--lambda-tools)
+  * [Knowledge Base Integration](#knowledge-base-integration)
+  * [Guardrails](#guardrails)
+  * [Logging & Observability](#logging--observability)
+  * [IAM Role Structure](#iam-role-structure)
+* [RAG Workflow](#rag-workflow)
+* [Agent Workflow](#agent-workflow)
+* [Environment Management](#environment-management)
+* [Deployment](#deployment)
 
-## Deploy the sample application
+  * [Prerequisites](#prerequisites)
+  * [Deploying to Dev/Stage/Prod](#deploying-to-devstagprod)
+  * [samconfig.toml](#samconfigtoml)
+* [Project Structure](#project-structure)
+* [Outputs](#outputs)
+* [Operational Notes & Caveats](#operational-notes--caveats)
 
-The Serverless Application Model Command Line Interface (SAM CLI) is an extension of the AWS CLI that adds functionality for building and testing Lambda applications. It uses Docker to run your functions in an Amazon Linux environment that matches Lambda. It can also emulate your application's build environment and API.
+---
 
-To use the SAM CLI, you need the following tools.
+# **Overview**
 
-* SAM CLI - [Install the SAM CLI](https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/serverless-sam-cli-install.html)
-* [Python 3 installed](https://www.python.org/downloads/)
-* Docker - [Install Docker community edition](https://hub.docker.com/search/?type=edition&offering=community)
+This project defines the **Econolens Bedrock RAG Agent**, a system that:
 
-To build and deploy your application for the first time, run the following in your shell:
+* Generates detailed **economic reports**.
+* Answers questions about **U.S. economic events, institutions, people, and indicators**.
+* Retrieves up-to-date economic data via **agent action groups calling AWS Lambda functions**, which query an **OpenSearch vector database**.
+* Engages the user in multi-turn conversations to understand user's intention
+* Uses **Bedrock Knowledge Base** embeddings, **Chunk metadata filtering**, and **Reranking** to support high-quality and **low-latency** RAG.
+* Implements strong **guardrails** to restrict the agent to U.S. economic content.
+* Sends detailed **agent invocation logs to S3** due to their large size.
+* Publishes operational metrics to **CloudWatch Metrics**.
+
+This SAM template is designed for **multi-environment deployments**, with all resource names prefixed by the environment (`dev`, `stag`, or `prod`).
+
+---
+
+# **Architecture**
+
+### **Bedrock Agent**
+
+The central component is the Bedrock Agent:
+
+* Uses **amazon.nova-pro-v1** (80B params) as the foundational model.
+* Defines a full **instruction set**, including:
+
+  * Tool usage rules
+  * Report generation workflow
+  * Question answering workflow
+  * Required date handling
+  * Step-by-step reasoning inside `<thinking>` tags
+* Uses **PromptOverrideConfiguration** to tightly control inference agent behavior (temperature, top-p, stop sequences, etc.) and facilitate ReAct/CoT prompting.
+* Connected to all action groups and tools defined in this stack.
+* Uses a **GuardrailConfiguration** to restrict economic queries to U.S. topics only.
+* Sample interactions with user for few-shot learning
+
+Each deployed environment gets its own Agent and Alias:
+
+```
+EconolensAgent_dev
+EconolensAgent_stag
+EconolensAgent_prod
+```
+
+### **Action Groups & Lambda Tools**
+
+Each economic topic, entity type, or general query is backed by a **Lambda-based action group**, including:
+
+#### **Topic-Based Tools**
+
+* GetTopicConsumerBehavior
+* GetTopicCorporate
+* GetTopicEconomyGeneral
+* GetTopicEconomyLongTerm
+* GetTopicGovernmentAndPolicy
+* GetTopicInflation
+* GetTopicLaborMarket
+
+#### **Entity-Based Tools**
+
+* GetEntityInstitution
+* GetEntityPerson
+
+#### **General Tool**
+
+* GetQueryOnly (broad unclassified queries)
+
+Each action group maps to a Lambda function that:
+
+1. Accepts metadata parameters (`start_date_str`, `end_date_str`, `query`, etc.) for efficient retrieval from **Amazon Opensearch Serverless**
+2. Retrieves relevant chunks from OpenSearch
+3. Applies reranking with **Cohere Rerank 3.5**
+4. Returns payload with chunk data and metadata for the agent to use 
+
+All Lambda functions:
+
+* Use consistent environment variables
+* Are prefixed by environment
+* Run Python 3.11
+* Have IAM permissions via the `AgentFunctionsRole`
+
+### **Knowledge Base Integration**
+
+While the Agent itself does not query the KB directly, **Lambda functions use the Knowledge Base vector embeddings** for retrieval.
+The following is configured globally:
+
+```
+BEDROCK_KNOWLEDGE_BASE_ID
+RETRIEVE_CHUNK_PER_DAY_COUNT
+RERANK_CHUNK_COUNT
+```
+
+These environment variables control retrieval parameters for all tools.
+
+### **Guardrails**
+
+A Bedrock Guardrail is deployed with:
+
+* The **BlockEconomyOutsideUSA** Topic Policy
+* Input blocking for non-U.S. economic requests
+* Attached to the agent through `GuardrailConfiguration`
+
+A version resource (`GuardrailVersion`) is created to stabilize the guardrail configuration.
+
+### **Logging & Observability**
+
+#### **S3-based Agent Invocation Logging**
+
+Bedrock invocation logs can be extremely large, so this stack:
+
+* Creates **two S3 buckets**:
+
+  * `econolens-server-access-logs-<env>` – server access logs
+  * `econolens-invocation-logs-<env>` – Bedrock invocation logs
+* Uses a **custom resource Lambda** to:
+
+  * Call `PutModelInvocationLoggingConfiguration`
+  * Enable model invocation logging for Bedrock Agents
+* Restricts access so that only Bedrock can write to invocation logs.
+
+#### **CloudWatch Metrics**
+
+IAM policy permits the agent to publish to:
+
+```
+AWS/Bedrock/Agents
+```
+
+This enables metric dashboards tracking:
+
+* Invocation count
+* Latency
+* Failures
+* Guardrail activations
+* Token usage
+
+### **IAM Role Structure**
+#### **AgentFunctionsRole**
+
+* Assumed by Lambda functions
+* Grants:
+
+  * AWSLambdaBasicExecutionRole
+  * AmazonBedrockFullAccess
+
+#### **BedrockAgentExecutionRole**
+
+* Assumed by Bedrock Agent
+* Allows:
+
+  * Invoking specific Lambdas
+  * Running Bedrock APIs
+  * Applying guardrails
+  * Writing CloudWatch metrics
+
+#### **Logging Execution Role**
+
+* For custom resource Lambda handling log configuration
+
+---
+
+# **RAG Workflow**
+```
+┌────────────────┐
+│     USER        │
+│  Query / Prompt │
+└───────┬────────┘
+        │
+        ▼
+┌───────────────────────────────┐
+│        BEDROCK AGENT          │
+│  • Determine task type        │
+│  • Validate dates             │
+│  • Identify categories        │
+│  • Decide tool(s) to use      │
+└───────────┬───────────────────┘
+            │
+            ▼
+┌───────────────────────────────┐
+│     ACTION GROUP SELECTOR     │
+│  Select one or more tools:    │
+│   • Topic Tools               │
+│   • Entity Tools              │
+│   • Query-Only Tool           │
+└───────────┬───────────────────┘
+            │
+            ▼
+      ┌───────────────┐
+      │  LAMBDA TOOL  │
+      │ (per category)│
+      └───────┬───────┘
+              │
+              ▼
+   ┌──────────────────────────┐
+   │   OPENSEARCH VECTOR DB   │
+   │  • Embed query           │
+   │  • Retrieve chunks       │
+   │  • Metadata filtering    │
+   └───────────┬──────────────┘
+               │
+               ▼
+      ┌──────────────────────┐
+      │     RERANKING        │
+      │  Reduce results to   │
+      │  most relevant N     │
+      └──────────┬───────────┘
+                 │
+                 ▼
+       ┌──────────────────────┐
+       │    BEDROCK AGENT     │
+       │ • Synthesize answer  │
+       │ • OR generate report │
+       └──────────┬───────────┘
+                  │
+                  ▼
+          ┌──────────────┐
+          │    USER       │
+          │ Final Output  │
+          └──────────────┘
+
+```
+
+---
+
+# **Agent Workflow**
+
+The agent follows a deterministic workflow:
+
+### **1. Determine task type**
+
+* **Report generation** (phrases like “economic report”, “overview of”)
+* **Question answering** (queries starting with *What/Why/How* etc.)
+
+### **2. Validate and extract required inputs**
+
+* Requires `start_date_str` and `end_date_str`
+* Prompts the user if dates or categories are missing
+* Identifies categories:
+
+  * Topics
+  * People
+  * Institutions
+  * Ambiguous → falls back to `GetQueryOnly`
+
+### **3. Create retrieval parameters**
+
+* Build metadata queries for each Lambda tool
+* Pass date ranges, query strings, and optional categories
+
+### **4. Retrieve and rerank**
+
+* Vector DB returns candidate chunks
+* Lambda functions rerank down to configurable chunk counts
+* Agent uses strictly retrieved material ― **never past conversation content**
+
+### **5. Generate final output**
+
+* For reports → structured 7-section economic report + Executive Summary
+* For Q&A → synthesized answer from tool responses
+
+---
+
+# **Environment Management**
+
+All resources include the `Environment` parameter (`dev`, `stag`, `prod`) in their names and metadata:
+
+* AgentName = `EconolensAgent_<env>`
+* Lambda functions = `RetrieveTopicConsumerBehavior-<env>`
+* Buckets = `econolens-invocation-logs-<env>`
+
+This ensures clean separation of environments.
+
+### **samconfig.toml**
+
+Currently includes configuration for:
+
+* `dev`
+* `stag`
+
+To add `prod`, create another TOML section:
+
+```toml
+[prod.deploy.parameters]
+stack_name = "econolens-agent-prod"
+parameter_overrides = "Environment=prod"
+capabilities = "CAPABILITY_NAMED_IAM"
+resolve_s3 = true
+```
+
+---
+
+# **Deployment**
+
+## **Prerequisites**
+
+* AWS CLI configured
+* AWS SAM CLI installed
+* Docker installed
+* Permissions to deploy IAM roles, Bedrock Agents, Lambda, and S3
+* OpenSearch Vector DB already populated and accessible by Lambda
+
+---
+
+## **Deploying to Dev**
 
 ```bash
-sam build --use-container
-sam deploy --guided
+sam validate
+sam build
+sam local invoke RetrieveEntityPerson --event event/agent_invoke_entityPersons_test.json 
+sam deploy --config-env dev
 ```
 
-The first command will build the source of your application. The second command will package and deploy your application to AWS, with a series of prompts:
-
-* **Stack Name**: The name of the stack to deploy to CloudFormation. This should be unique to your account and region, and a good starting point would be something matching your project name.
-* **AWS Region**: The AWS region you want to deploy your app to.
-* **Confirm changes before deploy**: If set to yes, any change sets will be shown to you before execution for manual review. If set to no, the AWS SAM CLI will automatically deploy application changes.
-* **Allow SAM CLI IAM role creation**: Many AWS SAM templates, including this example, create AWS IAM roles required for the AWS Lambda function(s) included to access AWS services. By default, these are scoped down to minimum required permissions. To deploy an AWS CloudFormation stack which creates or modifies IAM roles, the `CAPABILITY_IAM` value for `capabilities` must be provided. If permission isn't provided through this prompt, to deploy this example you must explicitly pass `--capabilities CAPABILITY_IAM` to the `sam deploy` command.
-* **Save arguments to samconfig.toml**: If set to yes, your choices will be saved to a configuration file inside the project, so that in the future you can just re-run `sam deploy` without parameters to deploy changes to your application.
-
-You can find your API Gateway Endpoint URL in the output values displayed after deployment.
-
-## Use the SAM CLI to build and test locally
-
-Build your application with the `sam build --use-container` command.
+## **Deploying to Stage**
 
 ```bash
-sam-econolens-agent$ sam build --use-container
+sam deploy --config-env stag
 ```
 
-The SAM CLI installs dependencies defined in `hello_world/requirements.txt`, creates a deployment package, and saves it in the `.aws-sam/build` folder.
+## **Deploying to Prod**
 
-Test a single function by invoking it directly with a test event. An event is a JSON document that represents the input that the function receives from the event source. Test events are included in the `events` folder in this project.
-
-Run functions locally and invoke them with the `sam local invoke` command.
+If you add a prod config:
 
 ```bash
-sam-econolens-agent$ sam local invoke HelloWorldFunction --event events/event.json
+sam deploy --config-env prod
 ```
 
-The SAM CLI can also emulate your application's API. Use the `sam local start-api` to run the API locally on port 3000.
+---
 
-```bash
-sam-econolens-agent$ sam local start-api
-sam-econolens-agent$ curl http://localhost:3000/
+# **Project Structure**
+
+Example structure expected by the template:
+
+```
+.
+├── template.yaml
+├── lambda/
+│   ├── retrieve_topic/
+│   │   ├── consumer_behavior/app.py
+│   │   ├── corporate/app.py
+│   │   ├── economy_general/app.py
+│   │   ├── economy_long_term/app.py
+│   │   ├── government_and_policy/app.py
+│   │   ├── inflation/app.py
+│   │   └── labor_market/app.py
+│   ├── retrieve_entity/
+│   │   ├── institution/app.py
+│   │   └── person/app.py
+│   ├── retrieve_query_only/app.py
+│
+└── samconfig.toml
 ```
 
-The SAM CLI reads the application template to determine the API's routes and the functions that they invoke. The `Events` property on each function's definition includes the route and method for each path.
+---
 
-```yaml
-      Events:
-        HelloWorld:
-          Type: Api
-          Properties:
-            Path: /hello
-            Method: get
+# **Outputs**
+
+After deployment, SAM outputs:
+
+### **AgentID**
+
+The Bedrock Agent ID used for invoking the agent programmatically.
+
+### **AgentAliasID**
+
+The Alias ID (always referencing Version 1 due to Bedrock versioning constraints).
+
+---
+
+# **Operational Notes & Caveats**
+
+### **Bedrock Agent Versioning**
+
+AWS currently has known issues with:
+
+* Alias → version mapping
+* Draft version creation
+* Version update propagation
+
+Therefore, the stack forces:
+
+* A single stable version
+* Alias always pointing to version 1
+
+See comments in template for references to AWS issues.
+
+### **S3 Buckets are Retained**
+
+Both buckets use:
+
+```
+DeletionPolicy: Retain
+UpdateReplacePolicy: Retain
 ```
 
-## Add a resource to your application
-The application template uses AWS Serverless Application Model (AWS SAM) to define application resources. AWS SAM is an extension of AWS CloudFormation with a simpler syntax for configuring common serverless application resources such as functions, triggers, and APIs. For resources not included in [the SAM specification](https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md), you can use standard [AWS CloudFormation](https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-template-resource-type-ref.html) resource types.
+You **must manually empty the buckets** before deletion.
 
-## Fetch, tail, and filter Lambda function logs
+### **Guardrails Block Non-U.S. Economics**
 
-To simplify troubleshooting, SAM CLI has a command called `sam logs`. `sam logs` lets you fetch logs generated by your deployed Lambda function from the command line. In addition to printing the logs on the terminal, this command has several nifty features to help you quickly find the bug.
+Any question involving foreign economies will be blocked.
 
-`NOTE`: This command works for all AWS Lambda functions; not just the ones you deploy using SAM.
+### **Lambda Invocation Permissions**
 
-```bash
-sam-econolens-agent$ sam logs -n HelloWorldFunction --stack-name "sam-econolens-agent" --tail
-```
+Permissions use `bedrock.amazonaws.com` as the principal and must reference the agent ARN.
 
-You can find more information and examples about filtering Lambda function logs in the [SAM CLI Documentation](https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/serverless-sam-cli-logging.html).
+### **Log Size**
 
-## Tests
+Invocation logs can be extremely large, so S3 logging is mandatory and CloudWatch logging is intentionally not used.
 
-Tests are defined in the `tests` folder in this project. Use PIP to install the test dependencies and run tests.
+---
 
-```bash
-sam-econolens-agent$ pip install -r tests/requirements.txt --user
-# unit test
-sam-econolens-agent$ python -m pytest tests/unit -v
-# integration test, requiring deploying the stack first.
-# Create the env variable AWS_SAM_STACK_NAME with the name of the stack we are testing
-sam-econolens-agent$ AWS_SAM_STACK_NAME="sam-econolens-agent" python -m pytest tests/integration -v
-```
+# **License**
 
-## Cleanup
+MIT.
 
-To delete the sample application that you created, use the AWS CLI. Assuming you used your project name for the stack name, you can run the following:
-
-```bash
-sam delete --stack-name "sam-econolens-agent"
-```
-
-## Resources
-
-See the [AWS SAM developer guide](https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/what-is-sam.html) for an introduction to SAM specification, the SAM CLI, and serverless application concepts.
-
-Next, you can use AWS Serverless Application Repository to deploy ready to use Apps that go beyond hello world samples and learn how authors developed their applications: [AWS Serverless Application Repository main page](https://aws.amazon.com/serverless/serverlessrepo/)

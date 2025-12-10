@@ -11,11 +11,9 @@ agentId = os.getenv("AGENT_ID")
 agentAliasId = os.getenv("AGENT_ALIAS_ID")
 assert agentId is not None; assert agentAliasId is not None
 
-sessionId=str(uuid.uuid4())
-
 bedrock_agent_runtime_client = boto3.client("bedrock-agent-runtime", region_name="us-east-1")
 
-def request_agent(prompt, client=bedrock_agent_runtime_client, agent_id=agentId, agent_alias_id=agentAliasId, session_id=sessionId):
+def request_agent(prompt, session_id, client=bedrock_agent_runtime_client, agent_id=agentId, agent_alias_id=agentAliasId):
 
     try:
         response = client.invoke_agent(
@@ -23,7 +21,6 @@ def request_agent(prompt, client=bedrock_agent_runtime_client, agent_id=agentId,
             agentAliasId=agent_alias_id,
             sessionId=session_id,
             inputText=prompt,
-            
         )
 
         statusCode = response['ResponseMetadata']['HTTPStatusCode'] 
@@ -67,7 +64,7 @@ def compare_cosine_sim(inference, reference):
 def test_guardrail():
     prompt = "Generate a report for the EU economy in 2025"
     reference = "The input contains blocked content"
-    inference = request_agent(prompt)
+    inference = request_agent(prompt, str(uuid.uuid4()))
 
     cos_sim = compare_cosine_sim(inference, reference)
 
@@ -80,7 +77,7 @@ def test_guardrail():
 def test_outside_date_range():
     prompt = "What were the consumer behavior trends in 2020?"
     reference = "I don't have enough information to answer that."
-    inference = request_agent(prompt)
+    inference = request_agent(prompt, str(uuid.uuid4()))
 
     cos_sim = compare_cosine_sim(inference, reference)
 
@@ -94,7 +91,7 @@ def test_quality_question():
     reference = """
     Based on the retrieved information, tariffs were exerting only a modest influence on the economy as of August 2025. Federal Reserve Governors Christopher Waller and Michelle Bowman indicated that tariffs were having a minimal effect on inflation and were likely to remain a minor factor. They noted that inflation would likely be nearer to the Feds 2% goal if the tariffs were not in place. Still, there are worries that postponing interest-rate adjustments could weaken the labor market and further slow economic growth. President Donald Trump has criticized the Fed for holding rates steady, urging significant rate cuts instead. The Feds decision to maintain current rates reflects its intention to continue assessing how tariffs are affecting inflation and overall economic conditions.
     """
-    inference = request_agent(prompt)
+    inference = request_agent(prompt, str(uuid.uuid4()))
 
     cos_sim = compare_cosine_sim(inference, reference)
 
@@ -134,7 +131,7 @@ def test_quality_report():
     The economic report for August 2025 highlights a mixed economic landscape. Consumer behavior is shifting towards experiences, while corporate activity is marked by significant mergers and acquisitions. The general economy shows signs of slowing, with core inflation rising and consumer spending less robust than expected. Long-term economic indicators suggest a weakening outlook, influenced by Trump's trade policies and immigration restrictions. Government and policy actions are focused on tariff impositions and interest rate decisions, with the Federal Reserve maintaining high rates despite calls for cuts. Inflation is rising due to tariffs, and the labor market is showing signs of weakness, with job growth slowing and unemployment edging up. The Federal Reserve is increasingly concerned about the labor market, signaling a potential rate cut in September.
     """
         
-    inference = request_agent(prompt)
+    inference = request_agent(prompt, str(uuid.uuid4()))
 
     cos_sim = compare_cosine_sim(inference, reference)
 

@@ -9,7 +9,11 @@ Using RAGAS to evaluate Agentic RAG with context is not possible without manual 
 
 RAGAS scoring does not seem to be working with reports because of the length of the output for some reason, but CoT scoring works. This open-source framework is not bug-free.
 
+At the time evaluation was performed. Data for the first 10 days of Jul/Aug/Sep 2025 were loaded into the vectot database amounting to over 1000 documents.
+
 Further reading
 https://www.confident-ai.com/blog/llm-evaluation-metrics-everything-you-need-for-llm-evaluation#ai-agent-metrics
+
 https://medium.com/@AlignX_AI/agents-testing-is-now-more-important-than-ever-before-ad468392fc3b
+
 https://www.datacamp.com/blog/llm-evaluation

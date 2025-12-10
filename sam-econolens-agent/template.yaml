@@ -28,7 +28,7 @@ Globals:
       - x86_64
     Environment:
       Variables:
-        BEDROCK_KNOWLEDGE_BASE_ID: GWGDYXXCJX
+        BEDROCK_KNOWLEDGE_BASE_ID: JJAKXJLSTH
         # Max returned in 1 call is 100, more requires pagination and nextToken
         RETRIEVE_CHUNK_PER_DAY_COUNT: 5
         # number of returned chunks after rerank
