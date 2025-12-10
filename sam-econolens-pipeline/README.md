@@ -1,113 +1,222 @@
-# sam-econolens
+# **EconoLens Data Pipeline**
 
-This project contains source code and supporting files for a serverless application that you can deploy with the SAM CLI. It includes the following files and folders.
+A fully serverless, container-based data pipeline deployed with Infrastucture as Code using **AWS SAM**, designed to ingest, clean, enrich, chunk, summarize, and ingest economic news articles into an **Amazon Bedrock Knowledge Base**.
 
-- hello_world - Code for the application's Lambda function and Project Dockerfile.
-- events - Invocation events that you can use to invoke the function.
-- tests - Unit tests for the application code. 
-- template.yaml - A template that defines the application's AWS resources.
+This pipeline extracts articles from the **GNews API**, stores and processes them through multiple ETL stages running in **Lambda container images**, and triggers a Bedrock ingestion job for semantic search and RAG workflows.
 
-The application uses several AWS resources, including Lambda functions and an API Gateway API. These resources are defined in the `template.yaml` file in this project. You can update the template to add AWS resources through the same deployment process that updates your application code.
+---
 
-## Deploy the sample application
+## **Table of Contents**
 
-The Serverless Application Model Command Line Interface (SAM CLI) is an extension of the AWS CLI that adds functionality for building and testing Lambda applications. It uses Docker to run your functions in an Amazon Linux environment that matches Lambda. It can also emulate your application's build environment and API.
+* [Architecture Overview](#architecture-overview)
+* [Pipeline Stages](#pipeline-stages)
+* [Infrastructure Components](#infrastructure-components)
+* [State Machine Orchestration](#state-machine-orchestration)
+* [Build & Deployment](#build--deployment)
+* [Environment Variables](#environment-variables)
+* [Folder Structure](#folder-structure)
+* [IAM & Security](#iam--security)
+* [Extending the Pipeline](#extending-the-pipeline)
 
-To use the SAM CLI, you need the following tools.
+---
 
-* SAM CLI - [Install the SAM CLI](https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/serverless-sam-cli-install.html)
-* Docker - [Install Docker community edition](https://hub.docker.com/search/?type=edition&offering=community)
+# **Architecture Overview**
 
-You may need the following for local testing.
-* [Python 3 installed](https://www.python.org/downloads/)
+The pipeline orchestrates multiple Lambda container functions via **AWS Step Functions**.
+Data flows through several S3 buckets representing each stage of processing:
 
-To build and deploy your application for the first time, run the following in your shell:
+```
+GNews API → S3 (staging) → cleaning → metadata + body separation → entity extraction → chunking + summarisation → Bedrock KB ingestion
+```
+
+All files are **UTF-8 encoded before writing** and **decoded when reading** across stages.
+
+### **High-Level Data Flow**
+
+1. **Extract** economic news across categories
+2. **Store raw JSON** articles in S3 staging bucket
+3. **Clean and normalize** article body
+4. **Separate metadata from text** into JSON and TXT files
+5. **Extract entities** with **spaCy** (en_core_web_md)
+6. **Semantic chunking + summarization** using
+
+   * **Amazon Nova Micro (11B)** for summarizing >800-token chunks
+7. **Ingest** processed chunks into an **Amazon Bedrock Knowledge Base**
+
+### **Daily Automation**
+
+An **EventBridge Scheduler** triggers the pipeline **every day at 10 AM Pacific Time**. 
+
+Cloudwatch logs store the logs from each lambda during operation at each schedule.
+
+---
+
+# **Pipeline Stages**
+
+## **1. API Extraction (pipeline_1_api_call)**
+
+* Calls **GNews API** across specified categories
+* UTF-8 encodes article payloads
+* Stores raw JSON files in **S3_STAGE (econolens-staging-area)**
+* Runs in a containerized Lambda (Python 3.11)
+
+## **2. Data Enrichment (pipeline_2_data_enrichment)**
+
+* Cleans article body and normalizes text
+* Runs entity extraction with **spaCy (en_core_web_md)**
+* Splits metadata and content
+* Writes enriched output to **S3_ENRICH (econolens-data-enriched)**
+* Requires **2 GB memory** to load models
+
+## **3. Semantic Chunking (pipeline_3_data_chunking)**
+
+* Embeds text with Titan-text-embeddings-v2 and separates into semantically meaningful chunks
+* Summarizes chunks >800 tokens using **Amazon Nova Micro (11B)**
+* Uploads chunked files to **S3_CHUNK (econolens-data-chunked)**
+* Memory: **3008MB**, Timeout: **900s**
+
+## **4. Bedrock Knowledge Base Ingestion (pipeline_4_bedrockKB_ingest)**
+
+* Reads chunked outputs
+* Starts an ingestion job using:
+
+  * **BEDROCK_KB_ID**
+  * **BEDROCK_KB_DATASOURCE_ID**
+* Waits for job completion
+* Uses IAM permissions aligned with Bedrock documentation
+
+---
+
+# **Infrastructure Components**
+
+### **AWS SAM Resources**
+
+| Resource                                         | Description                                            |
+| ------------------------------------------------ | ------------------------------------------------------ |
+| **AWS::Serverless::Function (container images)** | Each pipeline stage is a containerized Lambda          |
+| **AWS::Serverless::StateMachine**                | Orchestrates all stages sequentially                   |
+| **IAM Roles**                                    | Custom roles with S3, Bedrock, and logging permissions |
+| **EventBridge Scheduler**                        | Triggers pipeline daily at 10 AM PT                    |
+| **S3 Buckets**                                   | Staging → enriched → chunked                           |
+
+The SAM template uses `DefinitionSubstitutions` to inject Lambda ARNs into the Step Functions ASL file.
+
+---
+
+# **State Machine Orchestration**
+
+The Step Functions workflow (`statemachine/news_pipeline.asl.json`) coordinates:
+
+1. **Invoke APICallFunction**
+2. **Invoke DataEnrichmentFunction**
+3. **Invoke DataChunkFunction**
+4. **Invoke BedrockKBIngestFunction**
+
+This ensures each stage receives the files produced by the previous stage.
+
+![State machine](assets/stepfunctions_graph.png)
+
+The scheduler passes the timestamp via:
+
+```json
+{ "batch_date": "<aws.scheduler.scheduled-time>" }
+```
+
+Retry logic with backoff is incorporated at each task
+---
+
+# **Build & Deployment**
+
+### **Prerequisites**
+
+* AWS CLI
+* AWS SAM CLI
+* Docker (required for building Lambda container images)
+
+### **Build all container images**
 
 ```bash
-sam build
+sam build --use-container --parallel
+```
+
+### **Deploy the pipeline**
+
+```bash
 sam deploy --guided
 ```
 
-The first command will build a docker image from a Dockerfile and then copy the source of your application inside the Docker image. The second command will package and deploy your application to AWS, with a series of prompts:
+The guided deploy will prompt you to set parameters and create the necessary roles and resources.
 
-* **Stack Name**: The name of the stack to deploy to CloudFormation. This should be unique to your account and region, and a good starting point would be something matching your project name.
-* **AWS Region**: The AWS region you want to deploy your app to.
-* **Confirm changes before deploy**: If set to yes, any change sets will be shown to you before execution for manual review. If set to no, the AWS SAM CLI will automatically deploy application changes.
-* **Allow SAM CLI IAM role creation**: Many AWS SAM templates, including this example, create AWS IAM roles required for the AWS Lambda function(s) included to access AWS services. By default, these are scoped down to minimum required permissions. To deploy an AWS CloudFormation stack which creates or modifies IAM roles, the `CAPABILITY_IAM` value for `capabilities` must be provided. If permission isn't provided through this prompt, to deploy this example you must explicitly pass `--capabilities CAPABILITY_IAM` to the `sam deploy` command.
-* **Save arguments to samconfig.toml**: If set to yes, your choices will be saved to a configuration file inside the project, so that in the future you can just re-run `sam deploy` without parameters to deploy changes to your application.
+---
 
-You can find your API Gateway Endpoint URL in the output values displayed after deployment.
+# **Environment Variables**
 
-## Use the SAM CLI to build and test locally
+Configured under `Globals → Function` in the SAM template:
 
-Build your application with the `sam build` command.
+| Variable                     | Purpose                      |
+| ---------------------------- | ---------------------------- |
+| **S3_STAGE**                 | Raw staging area bucket      |
+| **S3_ENRICH**                | Enriched data bucket         |
+| **S3_CHUNK**                 | Chunked data bucket          |
+| **BEDROCK_KB_ID**            | Knowledge Base ID            |
+| **BEDROCK_KB_DATASOURCE_ID** | DS ID associated with the KB |
 
-```bash
-sam-econolens$ sam build
+These propagate automatically into all functions.
+
+---
+
+# **Folder Structure**
+
+```
+.
+├── template.yaml                # SAM template
+├── samconfig.toml               # SAM config
+├── statemachine/
+│   └── news_pipeline.asl.json   # Step Functions definition
+├── functions/
+│   ├── pipeline_1_api_call/
+│   ├── pipeline_2_data_enrichment/
+│   ├── pipeline_3_data_chunking/
+│   └── pipeline_4_bedrockKB_ingest/
+└── README.md
 ```
 
-The SAM CLI builds a docker image from a Dockerfile and then installs dependencies defined in `hello_world/requirements.txt` inside the docker image. The processed template file is saved in the `.aws-sam/build` folder.
+Each function folder contains:
 
-Test a single function by invoking it directly with a test event. An event is a JSON document that represents the input that the function receives from the event source. Test events are included in the `events` folder in this project.
+* `Dockerfile`
+* handler code
+* requirements
 
-Run functions locally and invoke them with the `sam local invoke` command.
+All Lambda functions run from **container images**, built using the local Docker context.
 
-```bash
-sam-econolens$ sam local invoke HelloWorldFunction --event events/event.json
-```
+---
 
-The SAM CLI can also emulate your application's API. Use the `sam local start-api` to run the API locally on port 3000.
+# **IAM & Security**
 
-```bash
-sam-econolens$ sam local start-api
-sam-econolens$ curl http://localhost:3000/
-```
+### IAM roles include:
 
-The SAM CLI reads the application template to determine the API's routes and the functions that they invoke. The `Events` property on each function's definition includes the route and method for each path.
+* **AWSLambdaBasicExecutionRole**
+* **AmazonS3FullAccess** (can be scoped down in production)
+* **AmazonBedrockFullAccess** (chunking stage)
+* **Custom Bedrock KB ingestion permissions** (final stage)
 
-```yaml
-      Events:
-        HelloWorld:
-          Type: Api
-          Properties:
-            Path: /hello
-            Method: get
-```
+These were configured to meet the minimum necessary capabilities for each stage.
 
-## Add a resource to your application
-The application template uses AWS Serverless Application Model (AWS SAM) to define application resources. AWS SAM is an extension of AWS CloudFormation with a simpler syntax for configuring common serverless application resources such as functions, triggers, and APIs. For resources not included in [the SAM specification](https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md), you can use standard [AWS CloudFormation](https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-template-resource-type-ref.html) resource types.
+---
 
-## Fetch, tail, and filter Lambda function logs
+# **Extending the Pipeline**
 
-To simplify troubleshooting, SAM CLI has a command called `sam logs`. `sam logs` lets you fetch logs generated by your deployed Lambda function from the command line. In addition to printing the logs on the terminal, this command has several nifty features to help you quickly find the bug.
+Here are ideas for future improvements:
 
-`NOTE`: This command works for all AWS Lambda functions; not just the ones you deploy using SAM.
+* **Add CloudWatch dashboards** for throughput metrics
+* **Integrate OpenSearch Serverless** as a secondary search index
+* **Add automated unit testing with sam local invoke**
+* **Add S3 object lifecycle policies** for cost optimization
 
-```bash
-sam-econolens$ sam logs -n HelloWorldFunction --stack-name "sam-econolens" --tail
-```
+---
 
-You can find more information and examples about filtering Lambda function logs in the [SAM CLI Documentation](https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/serverless-sam-cli-logging.html).
+# **License**
 
-## Unit tests
+MIT
 
-Tests are defined in the `tests` folder in this project. Use PIP to install the [pytest](https://docs.pytest.org/en/latest/) and run unit tests from your local machine.
-
-```bash
-sam-econolens$ pip install pytest pytest-mock --user
-sam-econolens$ python -m pytest tests/ -v
-```
-
-## Cleanup
-
-To delete the sample application that you created, use the AWS CLI. Assuming you used your project name for the stack name, you can run the following:
-
-```bash
-sam delete --stack-name "sam-econolens"
-```
-
-## Resources
-
-See the [AWS SAM developer guide](https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/what-is-sam.html) for an introduction to SAM specification, the SAM CLI, and serverless application concepts.
-
-Next, you can use AWS Serverless Application Repository to deploy ready to use Apps that go beyond hello world samples and learn how authors developed their applications: [AWS Serverless Application Repository main page](https://aws.amazon.com/serverless/serverlessrepo/)
+---
