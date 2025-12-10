@@ -37,6 +37,7 @@ This repository contains:
 │   └── README.md
 │
 ├── evaluation/                    # Offline evaluation with open-source framework using Langfuse/Ragas/LLM-judge
+│   └──  sample_responses.md       # Sample responses to prompt use-cases
 │
 ├── tests/                         # Test suite executed locally & in CI
 │   ├── unit/                      # Unit tests for Lambda handlers & utils

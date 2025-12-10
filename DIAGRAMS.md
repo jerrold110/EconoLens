@@ -16,6 +16,9 @@ Part 4 - Agentic RAG workflow, observability & monitoring
 
 Part 5 - Evaluation, tests, LLMOps 
 
+## **Agent workflow**
+![Data](/assets/agent_workflow.jpg "Agent")
+
 ## **Architecture diagram**
 ![Data](/assets/architecture.png "Architecture")
 
