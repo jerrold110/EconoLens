@@ -3,10 +3,10 @@
 
 Econolens is an economic report generating and questions answering AI with a **unique Agentic RAG architecture** that enables up-to-date responses and intelligently retrieves data vector database with a number of documents in the magnitude of 100,000s through enriched chunks and metadata filtering. It ingests a large number of news articles from the world wide web on a daily basis into a vector database and breaks them down into enriched chunks with an **NLP data pipeline**. 
 
-Through the Agent's nuanced workflow (check diagrams), it can engage the user in multi-turn conversaitons to generate economic reports and answers questions related to the U.S. economy over specific periods of time. From a large catalogue of articles for specific economic topics,persons, institutions.
-Use-cases might include: assisting an economist in understanding the current/past economic conditions, understanding the drivers behind economic events and their effects, or getting a in-depth analysis about a particular sector of the economy/corporation.
+Through the Agent's nuanced workflow (check diagrams), it can engage the user in multi-turn conversaitons to generate economic reports and answers questions related to the U.S. economy over specific periods of time. From a large catalogue of articles for specific economic topics, persons, institutions.
+Use-cases might include: assisting an economist in understanding the current/past economic conditions, understanding the drivers behind economic events and their effects, or getting a in-depth analysis about a particular sector of the economy/specific corporation.
 
-Check DIAGRAMS.md for agent/architecture diagrams
+Refer to each `sam-econolens-` directory for more details in the respective `README.md`.
 
 This repository contains:
 
@@ -16,6 +16,7 @@ This repository contains:
 * Automated unit + smoke testing
 * Research notebooks for chunking and summarization experiments
 * A full agent ecosystem: Bedrock Agent, Alias, Guardrails, Lambda tools, logging, and monitoring
+* Data pipeline: Opensearch, Lambda, S3, Step Functions, EventBridge, Secrets manager, GNews API
 
 ---
 
