@@ -1,8 +1,9 @@
 # **Econolens AI Platform**
 *Time-sensitive Agentic RAG System for U.S. Economic Analysis*
 
-Econolens is an economic report generating and questions answering AI with a **unique Agentic RAG architecture** that enables up-to-date responses and intelligently retrieves data vector database with a number of documents in the magnitude of 100,000s through enriched chunks and metadata filtering. It ingests a large number of news articles from the world wide web on a daily basis into a vector database and breaks them down into enriched chunks with **NLP data pipeline**. 
-Through the Agent's nuanced workflow (check DIAGRAMS.md). It can engage the user in multi-turn conversaitons to generate economic reports and answers questions related to the U.S. economy over specific periods of time. From a large catalogue of articles for specific economic topics,persons, institutions.
+Econolens is an economic report generating and questions answering AI with a **unique Agentic RAG architecture** that enables up-to-date responses and intelligently retrieves data vector database with a number of documents in the magnitude of 100,000s through enriched chunks and metadata filtering. It ingests a large number of news articles from the world wide web on a daily basis into a vector database and breaks them down into enriched chunks with an **NLP data pipeline**. 
+
+Through the Agent's nuanced workflow (check diagrams), it can engage the user in multi-turn conversaitons to generate economic reports and answers questions related to the U.S. economy over specific periods of time. From a large catalogue of articles for specific economic topics,persons, institutions.
 Use-cases might include: assisting an economist in understanding the current/past economic conditions, understanding the drivers behind economic events and their effects, or getting a in-depth analysis about a particular sector of the economy/corporation.
 
 Check DIAGRAMS.md for agent/architecture diagrams
