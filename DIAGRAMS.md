@@ -4,7 +4,7 @@ Through the Agent's intelligent and nuanced workflow. It can engage the user in 
 
 ## Articles on substack
 
-I am in the process of writing articles that reflect my thought process in designing this system
+In the process of writing articles that reflect the design and thinking process. This section is incomplete
 
 Part 1 – Text summarisation in a RAG pipeline https://jerroldsworkshopandsymposium.substack.com/p/econolens-part-1-text-summarisation
 
@@ -14,7 +14,7 @@ Part 3 - System architecture, deployment, and building the data pipeline
 
 Part 4 - Agentic RAG workflow, observability & monitoring
 
-Part 5 - Evaluation, tests, LLMOps 
+Part 5 - Agentic RAG evaluation, tests, LLMOps 
 
 ## **Agent workflow**
 ![Data](/assets/agent_workflow.jpg "Agent")

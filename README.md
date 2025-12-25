@@ -4,19 +4,18 @@
 Econolens is an economic report generating and questions answering AI with a **unique Agentic RAG architecture** that enables up-to-date responses and intelligently retrieves data vector database with a number of documents in the magnitude of 100,000s through enriched chunks and metadata filtering. It ingests a large number of news articles from the world wide web on a daily basis into a vector database and breaks them down into enriched chunks with an **NLP data pipeline**. 
 
 Through the Agent's nuanced workflow (check diagrams), it can engage the user in multi-turn conversaitons to generate economic reports and answers questions related to the U.S. economy over specific periods of time. From a large catalogue of articles for specific economic topics, persons, institutions.
-Use-cases might include: assisting an economist in understanding the current/past economic conditions, understanding the drivers behind economic events and their effects, or getting a in-depth analysis about a particular sector of the economy/specific corporation.
+*Use-cases might include: assisting an economic analyst in understanding the current/past economic conditions, understanding the drivers behind economic events and their effects, or getting an in-depth analysis about a particular sector of the economy or a specific corporation.*
 
 Refer to each `sam-econolens-` directory for more details in the respective `README.md`.
 
 This repository contains:
-
+* A full agent ecosystem: Bedrock Agent, Alias, Guardrails, Lambda tools, logging, and monitoring
+* NLP Data pipeline: GNews API, Opensearch, Lambda, S3, Step Functions, EventBridge, Secrets manager
 * Infrastructure-as-Code (IaC) using **AWS SAM**
 * A multi-environment **CI/CD pipeline**
 * Offline evaluation tools (Langfuse, Ragas, LLM-as-a-judge)
 * Automated unit + smoke testing
-* Research notebooks for chunking and summarization experiments
-* A full agent ecosystem: Bedrock Agent, Alias, Guardrails, Lambda tools, logging, and monitoring
-* Data pipeline: Opensearch, Lambda, S3, Step Functions, EventBridge, Secrets manager, GNews API
+* Research notebooks for semantic chunking and text summarization experiments
 
 ---
 
@@ -34,7 +33,8 @@ This repository contains:
 
 ```
 /
-├── sam-econolens-pipeline/        # CI/CD SAM stack (deployment pipeline)
+├── sam-econolens-pipeline/        # Serverless data pipeline (cleaning + entity extraction + chunk enrichment + semantic chunking)
+|   ├── template.yaml              # Full IaC for data pipeline
 │   └── README.md
 │
 ├── sam-econolens-agent/           # Main Agent Infra (Bedrock Agent + Lambdas)
@@ -50,7 +50,7 @@ This repository contains:
 │
 ├── notebook/                      # Research & prototyping notebooks
 │   ├── semantic_chunking.ipynb
-│   └── summary_eval.ipynb
+│   └── summary_eval.ipynb         # Text summarisation model evaluation study  
 │
 ├── .github/workflows/             # GitHub Actions CI/CD
 │   ├── run-tests.yml
@@ -96,13 +96,20 @@ Each tool is backed by a Lambda function responsible for retrieving vector-based
 
 * Query-only retrieval
 
-These Lambdas retrieve embeddings from a **Bedrock Knowledge Base**, search for chunks with a hybrid of BM25/Cosine-similarity, and rerank the chunks before returning them to the LLM as context.
+These Lambdas retrieve embeddings from a **Bedrock Knowledge Base**, search for chunks with a hybrid of *BM25/Cosine-similarity*, and rerank the chunks before returning them to the LLM as context.
 
 ### **3. Knowledge Base**
 
 * Bedrock vector store populated with processed economic news
 * Index used for retrieval + reranking
 * Enriched chunks with multiple fields for metadata searching
+
+### **4. Data pipeline**
+
+* Data pipeline that cleans, stores, and processes data in several stages
+* Ingests data into Amazon Opensearch vector database
+* Scheduling and orchestration with Step Functions and Eventbridge
+* Logging at each step in Cloudwatch logs and error handling
 
 ### **4. Observability**
 
@@ -115,8 +122,13 @@ These Lambdas retrieve embeddings from a **Bedrock Knowledge Base**, search for 
 * GitHub Actions triggers unit tests and smoke tests
 * SAM pipeline handles cross-account deployment
 * samconfig.toml defines defaults for dev/stag environments
+* Lightweight embedding models for comparison against reference answers in unit tests
 
-## Architecture
+### **6. Sample responses**
+
+Samples prompt and response conversations can be found in this [location](https://github.com/jerrold110/EconoLens/blob/main/evaluation/sample_responses.md) 
+
+## Architecture 
 ![Data](/assets/architecture.png "Architecture")
 
 ## Agent
