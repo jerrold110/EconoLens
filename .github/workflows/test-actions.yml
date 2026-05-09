@@ -3,6 +3,11 @@ on:
   pull_request:
     branches:
       - stage
+    paths-ignore:
+      - 'README.md'
+      - 'sam-econolens-agent-docs.md'
+      - 'sam-econolens-pipeline-docs.md'
+      - 'assets/**'
   # push: # On approval of pull request, no need to run test again. Requires spin up/down of infrastructure
   #   branches:
   #     - stage

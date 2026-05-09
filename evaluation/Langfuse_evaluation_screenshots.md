@@ -31,3 +31,10 @@ The left pane shows the RAG and Chain-of-thought scores. The right pane shows th
 ![Data](assets/15.png "")
 ![Data](assets/10.png "")
 ![Data](assets/11.png "")
+
+# **Multi-turn where agent prompts for more information**
+![Data](assets/16.png "")
+![Data](assets/17.png "")
+![Data](assets/18.png "")
+![Data](assets/19.png "")
+
