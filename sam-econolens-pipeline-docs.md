@@ -114,7 +114,7 @@ The Step Functions workflow (`statemachine/news_pipeline.asl.json`) coordinates:
 
 This ensures each stage receives the files produced by the previous stage.
 
-![State machine](assets/stepfunctions_graph.png)
+![State machine](sam-econolens-pipeline/assets/stepfunctions_graph.png)
 
 The scheduler passes the timestamp via:
 
